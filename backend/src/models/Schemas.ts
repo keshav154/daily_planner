@@ -5,6 +5,10 @@ export interface IUser extends Document {
   email: string;
   passwordHash: string;
   timezone: string;
+  theme: string;
+  xp: number;
+  level: number;
+  achievements: string[];
   preferences: {
     workingHoursStart: string; // e.g. "09:00"
     workingHoursEnd: string;   // e.g. "17:00"
@@ -18,6 +22,10 @@ const UserSchema = new Schema<IUser>({
   email: { type: String, required: true, unique: true, index: true, lowercase: true, trim: true },
   passwordHash: { type: String, required: true },
   timezone: { type: String, default: 'UTC' },
+  theme: { type: String, enum: ['dark', 'light'], default: 'dark' },
+  xp: { type: Number, default: 0 },
+  level: { type: Number, default: 1 },
+  achievements: [{ type: String }],
   preferences: {
     workingHoursStart: { type: String, default: '09:00' },
     workingHoursEnd: { type: String, default: '17:00' },

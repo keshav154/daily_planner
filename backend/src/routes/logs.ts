@@ -1,6 +1,7 @@
 import { Router, Response } from 'express';
 import { Log, Task } from '../models/Schemas';
 import { authenticateToken, AuthRequest } from '../middleware/auth';
+import { awardXP, XP_REWARDS } from '../services/xpEngine';
 
 const router = Router();
 
@@ -49,6 +50,11 @@ router.post('/', authenticateToken, async (req: AuthRequest, res: Response) => {
     });
 
     await log.save();
+
+    // Award XP for logged focus duration (minimum 15 mins)
+    if (log.duration >= 15) {
+      await awardXP(req.userId as string, XP_REWARDS.FINISH_POMODORO, `Focus work logged: ${log.title}`);
+    }
 
     // If taskId is provided, update actualTime on that task
     if (taskId) {

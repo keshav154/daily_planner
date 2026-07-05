@@ -101,4 +101,33 @@ router.get('/me', authenticateToken, async (req: AuthRequest, res: Response) => 
   }
 });
 
+// Update user profile (theme, preferences, etc.)
+router.put('/me', authenticateToken, async (req: AuthRequest, res: Response) => {
+  try {
+    const { timezone, preferences, theme } = req.body;
+    const user = await User.findById(req.userId);
+    if (!user) {
+      return res.status(404).json({ error: 'User not found' });
+    }
+
+    if (timezone) user.timezone = timezone;
+    if (theme) user.theme = theme;
+    if (preferences) {
+      user.preferences = {
+        ...user.preferences,
+        ...preferences
+      };
+    }
+
+    await user.save();
+    
+    // Return updated user without password hash
+    const updatedUser = await User.findById(req.userId).select('-passwordHash');
+    return res.json(updatedUser);
+  } catch (error: any) {
+    console.error('Update profile error:', error);
+    res.status(500).json({ error: 'Failed to update profile' });
+  }
+});
+
 export default router;

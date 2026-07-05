@@ -2,6 +2,7 @@ import { Router, Response } from 'express';
 import { Task } from '../models/Schemas';
 import { authenticateToken, AuthRequest } from '../middleware/auth';
 import { parseNaturalLanguageTask } from '../agent/parser';
+import { awardXP, XP_REWARDS } from '../services/xpEngine';
 
 const router = Router();
 
@@ -72,14 +73,29 @@ router.put('/:id', authenticateToken, async (req: AuthRequest, res: Response) =>
     const { id } = req.params;
     const updates = req.body;
 
+    const oldTask = await Task.findOne({ _id: id, userId: req.userId });
+    if (!oldTask) {
+      return res.status(404).json({ error: 'Task not found or unauthorized' });
+    }
+
     const task = await Task.findOneAndUpdate(
       { _id: id, userId: req.userId },
       updates,
       { new: true, runValidators: true }
     );
 
-    if (!task) {
-      return res.status(404).json({ error: 'Task not found or unauthorized' });
+    if (task && oldTask.status !== 'done' && task.status === 'done') {
+      let xpAwarded = XP_REWARDS.COMPLETE_TASK;
+      if (task.priority === 'high') {
+        xpAwarded = XP_REWARDS.COMPLETE_HIGH_PRIORITY;
+      }
+      
+      const allSubtasksDone = task.subtasks && task.subtasks.length > 0 && task.subtasks.every(st => st.completed);
+      if (allSubtasksDone) {
+        xpAwarded += XP_REWARDS.COMPLETE_ALL_SUBTASKS;
+      }
+
+      await awardXP(req.userId as string, xpAwarded, `Completed task: ${task.title}`);
     }
 
     res.json(task);

@@ -245,7 +245,7 @@ router.post('/chat', authenticateToken, async (req: AuthRequest, res: Response) 
 
     const context = await gatherUserContext(userId);
 
-    const systemPrompt = `You are Aether Planner Agent, a premium AI daily productivity assistant.
+    const systemPrompt = `You are Kortex Assistant, custom-built for Keshav. You are a premium AI daily productivity assistant.
 You are having an interactive chat with the user to help them plan, structure, and optimize their schedule.
 
 Current Context Snapshot:

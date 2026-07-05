@@ -6,6 +6,13 @@ import authRoutes from './routes/auth';
 import taskRoutes from './routes/tasks';
 import logRoutes from './routes/logs';
 import agentRoutes from './routes/agent';
+import recurringRoutes from './routes/recurring';
+import scheduleRoutes from './routes/schedule';
+import habitRoutes from './routes/habits';
+import templateRoutes from './routes/templates';
+import briefingRoutes from './routes/briefing';
+import exportRoutes from './routes/exportRoutes';
+import { authenticateToken } from './middleware/auth';
 
 // Load environment variables
 dotenv.config();
@@ -33,6 +40,12 @@ app.use('/api/auth', authRoutes);
 app.use('/api/tasks', taskRoutes);
 app.use('/api/logs', logRoutes);
 app.use('/api/agent', agentRoutes);
+app.use('/api/recurring', authenticateToken, recurringRoutes);
+app.use('/api/schedule', authenticateToken, scheduleRoutes);
+app.use('/api/habits', authenticateToken, habitRoutes);
+app.use('/api/templates', authenticateToken, templateRoutes);
+app.use('/api/briefing', authenticateToken, briefingRoutes);
+app.use('/api/export', authenticateToken, exportRoutes);
 
 // Global Error Handler
 app.use((err: any, req: express.Request, res: express.Response, next: express.NextFunction) => {
