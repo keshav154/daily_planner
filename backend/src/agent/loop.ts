@@ -1,6 +1,7 @@
 import Anthropic from '@anthropic-ai/sdk';
 import mongoose from 'mongoose';
 import { User, Task, Log, AgentMemory, AgentRun, ITask, ILog, IAgentMemory } from '../models/Schemas';
+import { queryNvidiaNim } from '../config/nvidia';
 
 // Instantiate Anthropic Client
 const getAnthropicClient = (): Anthropic | null => {
@@ -86,9 +87,11 @@ export const runPlanningLoop = async (
   trigger: string = 'manual'
 ): Promise<any> => {
   const context = await gatherUserContext(userId);
+  const nvidiaKey = process.env.NVIDIA_API_KEY;
+  const isNvidiaActive = nvidiaKey && nvidiaKey !== 'your_nvidia_api_key_here';
   const client = getAnthropicClient();
 
-  if (!client) {
+  if (!client && !isNvidiaActive) {
     return runMockPlanning(userId, trigger, context);
   }
 
@@ -131,13 +134,21 @@ Return ONLY a JSON object matching this schema, no other text or explanation:
   ]
 }`;
 
-    const response = await client.messages.create({
-      model: 'claude-3-5-sonnet-20241022',
-      max_tokens: 1500,
-      messages: [{ role: 'user', content: prompt }]
-    });
+    let responseText = '';
 
-    const responseText = response.content[0].type === 'text' ? response.content[0].text : '';
+    if (isNvidiaActive) {
+      responseText = await queryNvidiaNim([
+        { role: 'user', content: prompt }
+      ], 'meta/llama-3.1-405b-instruct', 0.2, 1500);
+    } else if (client) {
+      const response = await client.messages.create({
+        model: 'claude-3-5-sonnet-20241022',
+        max_tokens: 1500,
+        messages: [{ role: 'user', content: prompt }]
+      });
+      responseText = response.content[0].type === 'text' ? response.content[0].text : '';
+    }
+
     let cleanJson = responseText.trim();
     if (cleanJson.startsWith('```json')) {
       cleanJson = cleanJson.slice(7);
@@ -265,10 +276,11 @@ export const runReflectionLoop = async (
   userId: string,
   targetDateStr?: string
 ): Promise<any> => {
-  const context = await gatherUserContext(userId, targetDateStr);
+  const nvidiaKey = process.env.NVIDIA_API_KEY;
+  const isNvidiaActive = nvidiaKey && nvidiaKey !== 'your_nvidia_api_key_here';
   const client = getAnthropicClient();
 
-  if (!client) {
+  if (!client && !isNvidiaActive) {
     return runMockReflection(userId, context);
   }
 
@@ -297,13 +309,21 @@ Return ONLY a JSON object matching this schema, no other text:
   ]
 }`;
 
-    const response = await client.messages.create({
-      model: 'claude-3-5-sonnet-20241022',
-      max_tokens: 1000,
-      messages: [{ role: 'user', content: prompt }]
-    });
+    let responseText = '';
 
-    const responseText = response.content[0].type === 'text' ? response.content[0].text : '';
+    if (isNvidiaActive) {
+      responseText = await queryNvidiaNim([
+        { role: 'user', content: prompt }
+      ], 'meta/llama-3.1-405b-instruct', 0.2, 1000);
+    } else if (client) {
+      const response = await client.messages.create({
+        model: 'claude-3-5-sonnet-20241022',
+        max_tokens: 1000,
+        messages: [{ role: 'user', content: prompt }]
+      });
+      responseText = response.content[0].type === 'text' ? response.content[0].text : '';
+    }
+
     let cleanJson = responseText.trim();
     if (cleanJson.startsWith('```json')) {
       cleanJson = cleanJson.slice(7);

@@ -39,6 +39,8 @@ export interface ITask extends Document {
   category: string;      // e.g. "Work", "Personal", "Health", "Learning"
   source: 'manual' | 'agent-suggested';
   order: number;
+  subtasks: Array<{ title: string; completed: boolean }>;
+  timeBlock?: { startTime: string; endTime: string };
   createdAt: Date;
   updatedAt: Date;
 }
@@ -55,7 +57,15 @@ const TaskSchema = new Schema<ITask>({
   tags: [{ type: String }],
   category: { type: String, default: 'Work', index: true },
   source: { type: String, enum: ['manual', 'agent-suggested'], default: 'manual' },
-  order: { type: Number, default: 0 }
+  order: { type: Number, default: 0 },
+  subtasks: [{
+    title: { type: String, required: true },
+    completed: { type: Boolean, default: false }
+  }],
+  timeBlock: {
+    startTime: { type: String },
+    endTime: { type: String }
+  }
 }, { timestamps: true });
 
 // Log Schema

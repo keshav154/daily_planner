@@ -1,7 +1,9 @@
 import { Router, Response } from 'express';
 import { AgentRun, AgentMemory, Task } from '../models/Schemas';
 import { authenticateToken, AuthRequest } from '../middleware/auth';
-import { runPlanningLoop, runReflectionLoop } from '../agent/loop';
+import { runPlanningLoop, runReflectionLoop, gatherUserContext } from '../agent/loop';
+import { queryNvidiaNim } from '../config/nvidia';
+import Anthropic from '@anthropic-ai/sdk';
 
 const router = Router();
 
@@ -228,6 +230,121 @@ router.put('/memories/:id', authenticateToken, async (req: AuthRequest, res: Res
   } catch (error: any) {
     console.error('Update memory error:', error);
     res.status(500).json({ error: 'Failed to update memory feedback' });
+  }
+});
+
+// Interactive agent chat endpoint
+router.post('/chat', authenticateToken, async (req: AuthRequest, res: Response) => {
+  try {
+    const userId = req.userId!;
+    const { message, history } = req.body;
+
+    if (!message) {
+      return res.status(400).json({ error: 'Message is required' });
+    }
+
+    const context = await gatherUserContext(userId);
+
+    const systemPrompt = `You are Aether Planner Agent, a premium AI daily productivity assistant.
+You are having an interactive chat with the user to help them plan, structure, and optimize their schedule.
+
+Current Context Snapshot:
+- Current Time (UTC): ${context.currentTime}
+- User Timezone/Preferences: ${context.user.timezone} (${context.user.preferences.workingHoursStart} to ${context.user.preferences.workingHoursEnd})
+- Peak Energy: ${context.user.preferences.peakEnergyTime}
+- Today's Tasks: ${JSON.stringify(context.activeTasks.map(t => ({ id: t._id, title: t.title, status: t.status, priority: t.priority, estimatedTime: t.estimatedTime, actualTime: t.actualTime })), null, 2)}
+- Today's Work Logs: ${JSON.stringify(context.dailyLogs.map(l => ({ title: l.title, duration: l.duration })), null, 2)}
+- Agent Memories: ${JSON.stringify(context.memories.map(m => m.content), null, 2)}
+
+You must respond ONLY with a JSON object containing your text response and an optional list of structured actions (suggestions) that the user can accept or reject.
+Allowed action types in suggestions:
+- "reorder": { orderedTaskIds: string[] }
+- "suggest_time_block": { taskId: string, startTime: string, duration: number }
+- "break_down": { taskId: string, subtasks: string[] }
+- "nudge": { taskId: string, message: string }
+- "create_task": { title: string, estimatedTime: number }
+
+Response JSON interface:
+{
+  "response": "Your friendly text reply analyzing their message and context...",
+  "suggestions": [
+    {
+      "id": "slug-string",
+      "taskId": "mongoose-task-id-if-applies",
+      "actionType": "reorder | suggest_time_block | break_down | nudge | create_task",
+      "description": "Clear instruction showing what clicking 'Accept' will do",
+      "details": { ... }
+    }
+  ]
+}
+
+Format output as raw JSON only. Do not wrap in markdown \`\`\`json block.`;
+
+    const nvidiaKey = process.env.NVIDIA_API_KEY;
+    const isNvidiaActive = nvidiaKey && nvidiaKey !== 'your_nvidia_api_key_here';
+    const anthropicApiKey = process.env.ANTHROPIC_API_KEY;
+
+    let responseText = '';
+    const messages = [
+      { role: 'system' as const, content: systemPrompt },
+      ...(history || []).map((h: any) => ({ role: h.role, content: h.content })),
+      { role: 'user' as const, content: message }
+    ];
+
+    if (isNvidiaActive) {
+      responseText = await queryNvidiaNim(messages, 'meta/llama-3.1-405b-instruct', 0.5, 1000);
+    } else if (anthropicApiKey && anthropicApiKey !== 'your_anthropic_api_key_here') {
+      const claudeMessages = messages.filter(m => m.role !== 'system');
+      const anthropic = new Anthropic({ apiKey: anthropicApiKey });
+      const response = await anthropic.messages.create({
+        model: 'claude-3-5-sonnet-20241022',
+        max_tokens: 1000,
+        system: systemPrompt,
+        messages: claudeMessages
+      });
+      responseText = response.content[0].type === 'text' ? response.content[0].text : '';
+    } else {
+      responseText = JSON.stringify({
+        response: `Offline Mode: I received your message "${message}". Add an API key (Claude or NVIDIA NIM) to enable interactive chat scheduling.`,
+        suggestions: []
+      });
+    }
+
+    let cleanJson = responseText.trim();
+    if (cleanJson.startsWith('```json')) cleanJson = cleanJson.slice(7);
+    if (cleanJson.endsWith('```')) cleanJson = cleanJson.slice(0, -3);
+
+    const parsedResponse = JSON.parse(cleanJson.trim());
+    const suggestions = parsedResponse.suggestions || [];
+    let runId = null;
+
+    if (suggestions.length > 0) {
+      const agentRun = new AgentRun({
+        userId,
+        trigger: 'chat',
+        contextSnapshot: context,
+        planOutput: {
+          rationale: `Chat: ${message}`,
+          suggestions
+        },
+        actionsTaken: suggestions.map((s: any) => ({
+          suggestionId: s.id,
+          actionType: s.actionType,
+          status: 'pending'
+        }))
+      });
+      await agentRun.save();
+      runId = agentRun._id;
+    }
+
+    res.json({
+      response: parsedResponse.response,
+      suggestions,
+      runId
+    });
+  } catch (error: any) {
+    console.error('Agent chat error:', error);
+    res.status(500).json({ error: 'Failed to process agent chat' });
   }
 });
 

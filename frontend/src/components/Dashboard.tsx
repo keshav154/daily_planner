@@ -7,6 +7,7 @@ import { AgentMemoryView } from './AgentMemoryView';
 import { 
   Sparkles, Calendar, BookOpen, BarChart3, LogOut, User, Menu, X 
 } from 'lucide-react';
+import { AgentChatPanel } from './AgentChatPanel';
 
 type Tab = 'today' | 'logs' | 'analytics' | 'insights';
 
@@ -14,6 +15,7 @@ export const Dashboard: React.FC = () => {
   const { user, logout } = useAuth();
   const [activeTab, setActiveTab] = useState<Tab>('today');
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [chatOpen, setChatOpen] = useState(false);
 
   const navItems = [
     { id: 'today' as Tab, label: 'Today Planner', icon: Calendar },
@@ -140,6 +142,27 @@ export const Dashboard: React.FC = () => {
           </div>
         </main>
       </div>
+
+      {/* Floating AI Chat button */}
+      <button
+        id="open-copilot-btn"
+        onClick={() => setChatOpen(true)}
+        className="fixed bottom-6 right-6 w-14 h-14 rounded-full bg-gradient-to-r from-indigo-600 to-violet-600 hover:from-indigo-500 hover:to-violet-500 text-white flex items-center justify-center cursor-pointer shadow-lg shadow-indigo-600/30 transition-transform hover:scale-105 z-40 border border-white/10 group animate-bounce"
+        style={{ animationDuration: '3s' }}
+        title="Open AI Copilot Chat"
+      >
+        <Sparkles className="w-6 h-6 group-hover:rotate-12 transition-transform" />
+      </button>
+
+      {/* AI Copilot Side Drawer */}
+      <AgentChatPanel 
+        isOpen={chatOpen} 
+        onClose={() => setChatOpen(false)} 
+        onSuggestionApplied={() => {
+          // Dispatch global reload event
+          window.dispatchEvent(new Event('agent-action-applied'));
+        }}
+      />
     </div>
   );
 };

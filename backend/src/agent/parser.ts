@@ -1,4 +1,5 @@
 import Anthropic from '@anthropic-ai/sdk';
+import { queryNvidiaNim } from '../config/nvidia';
 
 export interface ParsedTaskResult {
   title: string;
@@ -13,7 +14,6 @@ export interface ParsedTaskResult {
 const getAnthropicClient = (): Anthropic | null => {
   const apiKey = process.env.ANTHROPIC_API_KEY;
   if (!apiKey || apiKey === 'your_anthropic_api_key_here') {
-    console.warn('Warning: ANTHROPIC_API_KEY is not defined. AI functionality will fall back to local rule-based parsing.');
     return null;
   }
   return new Anthropic({ apiKey });
@@ -84,13 +84,16 @@ export const parseFallback = (text: string): ParsedTaskResult => {
   };
 };
 
-// Claude-based Natural Language Task Parser
+// Claude or NVIDIA NIM-based Natural Language Task Parser
 export const parseNaturalLanguageTask = async (
   text: string,
   timezone: string = 'UTC'
 ): Promise<ParsedTaskResult> => {
+  const nvidiaKey = process.env.NVIDIA_API_KEY;
+  const isNvidiaActive = nvidiaKey && nvidiaKey !== 'your_nvidia_api_key_here';
   const client = getAnthropicClient();
-  if (!client) {
+  
+  if (!client && !isNvidiaActive) {
     return parseFallback(text);
   }
 
@@ -116,13 +119,20 @@ interface ParsedTaskResult {
 
 Format output as raw JSON only. Do not wrap in markdown \`\`\`json block.`;
 
-    const response = await client.messages.create({
-      model: 'claude-3-5-sonnet-20241022',
-      max_tokens: 400,
-      messages: [{ role: 'user', content: prompt }]
-    });
+    let responseText = '';
 
-    const responseText = response.content[0].type === 'text' ? response.content[0].text : '';
+    if (isNvidiaActive) {
+      responseText = await queryNvidiaNim([
+        { role: 'user', content: prompt }
+      ], 'meta/llama-3.1-405b-instruct', 0.1, 400);
+    } else if (client) {
+      const response = await client.messages.create({
+        model: 'claude-3-5-sonnet-20241022',
+        max_tokens: 400,
+        messages: [{ role: 'user', content: prompt }]
+      });
+      responseText = response.content[0].type === 'text' ? response.content[0].text : '';
+    }
     
     // Clean JSON content block if the model wraps it
     let cleanJson = responseText.trim();
@@ -136,7 +146,7 @@ Format output as raw JSON only. Do not wrap in markdown \`\`\`json block.`;
     const parsed: ParsedTaskResult = JSON.parse(cleanJson.trim());
     return parsed;
   } catch (error) {
-    console.error('Claude API failed to parse task. Using fallback parser.', error);
+    console.error('LLM API failed to parse task. Using fallback parser.', error);
     return parseFallback(text);
   }
 };

@@ -2,9 +2,12 @@ import React, { useState, useEffect } from 'react';
 import api from '../services/api';
 import { 
   Sparkles, Clock, CheckCircle2, Circle, AlertCircle, 
-  ChevronUp, ChevronDown, Trash2, Check, X, Tag, CornerDownRight, Zap 
+  ChevronUp, ChevronDown, Trash2, Check, X, Tag, CornerDownRight, Zap,
+  ListTodo, CalendarRange, ChevronRight
 } from 'lucide-react';
 import { motion } from 'framer-motion';
+import { TimeBlockingGrid } from './TimeBlockingGrid';
+import { PomodoroTimer } from './PomodoroTimer';
 
 interface Task {
   _id: string;
@@ -19,6 +22,8 @@ interface Task {
   category: string;
   order: number;
   source: 'manual' | 'agent-suggested';
+  subtasks: Array<{ title: string; completed: boolean }>;
+  timeBlock?: { startTime: string; endTime: string };
 }
 
 interface Suggestion {
@@ -49,6 +54,13 @@ export const TodayView: React.FC = () => {
   const [nlpText, setNlpText] = useState('');
   const [nlpParsing, setNlpParsing] = useState(false);
   const [planRunning, setPlanRunning] = useState(false);
+
+  // Layout View mode: 'list' or 'calendar'
+  const [viewMode, setViewMode] = useState<'list' | 'calendar'>('list');
+
+  // Expanded tasks for subtask rendering
+  const [expandedTasks, setExpandedTasks] = useState<Record<string, boolean>>({});
+  const [subtaskInputs, setSubtaskInputs] = useState<Record<string, string>>({});
 
   // Parsing Confirm Modal state
   const [parsedTask, setParsedTask] = useState<any>(null);
@@ -82,6 +94,12 @@ export const TodayView: React.FC = () => {
 
   useEffect(() => {
     fetchTodayData();
+
+    // Listen for agent action updates from chat copilot drawer
+    window.addEventListener('agent-action-applied', fetchTodayData);
+    return () => {
+      window.removeEventListener('agent-action-applied', fetchTodayData);
+    };
   }, [selectedDate]);
 
   // Quick NLP add
@@ -221,6 +239,62 @@ export const TodayView: React.FC = () => {
     }
   };
 
+  // Toggle subtask completion status
+  const handleToggleSubtask = async (task: Task, subtaskIdx: number) => {
+    const updatedSubtasks = task.subtasks.map((st: { title: string; completed: boolean }, idx: number) => 
+      idx === subtaskIdx ? { ...st, completed: !st.completed } : st
+    );
+
+    try {
+      await api.put(`/tasks/${task._id}`, { subtasks: updatedSubtasks });
+      fetchTodayData();
+    } catch (err) {
+      console.error(err);
+    }
+  };
+
+  // Add a subtask to a task
+  const handleAddSubtask = async (e: React.FormEvent, taskId: string) => {
+    e.preventDefault();
+    const title = subtaskInputs[taskId]?.trim();
+    if (!title) return;
+
+    const task = tasks.find(t => t._id === taskId);
+    if (!task) return;
+
+    const updatedSubtasks = [...(task.subtasks || []), { title, completed: false }];
+
+    try {
+      await api.put(`/tasks/${taskId}`, { subtasks: updatedSubtasks });
+      setSubtaskInputs(prev => ({ ...prev, [taskId]: '' }));
+      fetchTodayData();
+    } catch (err) {
+      console.error(err);
+    }
+  };
+
+  // Delete a subtask from a task
+  const handleDeleteSubtask = async (taskId: string, subtaskIdx: number) => {
+    const task = tasks.find(t => t._id === taskId);
+    if (!task) return;
+
+    const updatedSubtasks = task.subtasks.filter((_: any, idx: number) => idx !== subtaskIdx);
+
+    try {
+      await api.put(`/tasks/${taskId}`, { subtasks: updatedSubtasks });
+      fetchTodayData();
+    } catch (err) {
+      console.error(err);
+    }
+  };
+
+  // Focus Timer complete callback
+  const handleTimerComplete = (task: any, duration: number) => {
+    setCompletingTask(task);
+    setCompletionDuration(duration);
+    setCompletionNotes(`Completed focused sprint via Pomodoro focus timer.`);
+  };
+
   // Filter out pending suggestions
   const pendingSuggestions = lastRun?.planOutput?.suggestions?.filter(s => {
     const action = lastRun.actionsTaken.find(a => a.suggestionId === s.id);
@@ -236,6 +310,30 @@ export const TodayView: React.FC = () => {
           <p className="text-sm text-neutral-400">Organize, structure, and check off your logs.</p>
         </div>
         <div className="flex items-center gap-3">
+          {/* View Mode Toggle */}
+          <div className="flex bg-neutral-900 border border-white/5 rounded-lg p-0.5 select-none shrink-0">
+            <button
+              type="button"
+              onClick={() => setViewMode('list')}
+              className={`p-2 rounded-md cursor-pointer transition-all ${
+                viewMode === 'list' ? 'bg-neutral-800 text-indigo-400' : 'text-neutral-500 hover:text-neutral-300'
+              }`}
+              title="Checklist View"
+            >
+              <ListTodo className="w-4 h-4" />
+            </button>
+            <button
+              type="button"
+              onClick={() => setViewMode('calendar')}
+              className={`p-2 rounded-md cursor-pointer transition-all ${
+                viewMode === 'calendar' ? 'bg-neutral-800 text-indigo-400' : 'text-neutral-500 hover:text-neutral-300'
+              }`}
+              title="Time-Blocking Calendar"
+            >
+              <CalendarRange className="w-4 h-4" />
+            </button>
+          </div>
+
           <input
             id="date-select"
             type="date"
@@ -285,123 +383,219 @@ export const TodayView: React.FC = () => {
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         {/* Main Task List (2 cols) */}
         <div className="lg:col-span-2 space-y-4">
-          <div className="glass-panel rounded-xl p-6 shadow-xl">
-            <div className="flex items-center justify-between mb-4 border-b border-white/5 pb-3">
-              <h2 className="text-lg font-bold text-neutral-100">Tasks Checklist</h2>
-              <span className="text-xs text-neutral-400 font-semibold bg-neutral-900 px-2 py-1 rounded-md">
-                {tasks.filter(t => t.status === 'done').length} / {tasks.length} Completed
-              </span>
-            </div>
+          {viewMode === 'calendar' ? (
+            <TimeBlockingGrid tasks={tasks} onTaskUpdated={fetchTodayData} />
+          ) : (
+            <div className="glass-panel rounded-xl p-6 shadow-xl">
+              <div className="flex items-center justify-between mb-4 border-b border-white/5 pb-3">
+                <h2 className="text-lg font-bold text-neutral-100">Tasks Checklist</h2>
+                <span className="text-xs text-neutral-400 font-semibold bg-neutral-900 px-2 py-1 rounded-md">
+                  {tasks.filter(t => t.status === 'done').length} / {tasks.length} Completed
+                </span>
+              </div>
 
-            {loading ? (
-              <div className="flex items-center justify-center py-12">
-                <span className="text-sm text-neutral-500 animate-pulse">Loading checklist...</span>
-              </div>
-            ) : tasks.length === 0 ? (
-              <div className="flex flex-col items-center justify-center text-center py-16 text-neutral-500 space-y-3">
-                <CheckCircle2 className="w-12 h-12 stroke-[1.25] text-neutral-600" />
-                <div>
-                  <p className="text-base font-semibold">No tasks scheduled for today</p>
-                  <p className="text-xs">Add one above using the natural language bar.</p>
+              {loading ? (
+                <div className="flex items-center justify-center py-12">
+                  <span className="text-sm text-neutral-500 animate-pulse">Loading checklist...</span>
                 </div>
-              </div>
-            ) : (
-              <div className="divide-y divide-white/5">
-                {tasks.map((task, index) => (
-                  <motion.div
-                    key={task._id}
-                    layout
-                    initial={{ opacity: 0, y: 10 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    exit={{ opacity: 0, y: -10 }}
-                    className="flex items-start justify-between py-4 group"
-                  >
-                    <div className="flex items-start gap-3 flex-1 min-w-0 pr-4">
-                      <button
-                        type="button"
-                        onClick={() => toggleTaskStatus(task)}
-                        className="mt-0.5 text-neutral-500 hover:text-indigo-400 cursor-pointer transition-colors focus:outline-none"
-                      >
-                        {task.status === 'done' ? (
-                          <CheckCircle2 className="w-5 h-5 text-emerald-500 fill-emerald-500/10" />
-                        ) : (
-                          <Circle className="w-5 h-5" />
-                        )}
-                      </button>
-                      
-                      <div className="flex-1 min-w-0">
-                        <p className={`text-sm font-semibold text-neutral-200 truncate ${task.status === 'done' ? 'line-through text-neutral-500' : ''}`}>
-                          {task.title}
-                        </p>
-                        {task.description && (
-                          <p className="text-xs text-neutral-400 mt-1 line-clamp-2">
-                            {task.description}
-                          </p>
-                        )}
-                        <div className="flex flex-wrap items-center gap-2 mt-2">
-                          <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full ${
-                            task.priority === 'high' ? 'bg-red-500/10 text-red-400 border border-red-500/20' :
-                            task.priority === 'medium' ? 'bg-amber-500/10 text-amber-400 border border-amber-500/20' :
-                            'bg-blue-500/10 text-blue-400 border border-blue-500/20'
-                          }`}>
-                            {task.priority}
-                          </span>
-                          <span className="text-[10px] text-neutral-400 bg-neutral-900 px-2 py-0.5 rounded border border-white/5 flex items-center gap-1">
-                            <Clock className="w-3 h-3" /> {task.estimatedTime}m
-                          </span>
-                          {task.actualTime > 0 && (
-                            <span className="text-[10px] text-emerald-400 bg-emerald-950/20 px-2 py-0.5 rounded border border-emerald-500/10">
-                              Logged: {task.actualTime}m
-                            </span>
-                          )}
-                          {task.category && (
-                            <span className="text-[10px] text-neutral-400 bg-neutral-900 px-2 py-0.5 rounded border border-white/5 flex items-center gap-1">
-                              <Tag className="w-3 h-3" /> {task.category}
-                            </span>
-                          )}
-                          {task.source === 'agent-suggested' && (
-                            <span className="text-[10px] text-indigo-400 bg-indigo-950/20 px-2 py-0.5 rounded border border-indigo-500/10 flex items-center gap-0.5 font-medium">
-                              <Sparkles className="w-2.5 h-2.5" /> AI
-                            </span>
-                          )}
+              ) : tasks.length === 0 ? (
+                <div className="flex flex-col items-center justify-center text-center py-16 text-neutral-500 space-y-3">
+                  <CheckCircle2 className="w-12 h-12 stroke-[1.25] text-neutral-600" />
+                  <div>
+                    <p className="text-base font-semibold">No tasks scheduled for today</p>
+                    <p className="text-xs">Add one above using the natural language bar.</p>
+                  </div>
+                </div>
+              ) : (
+                <div className="divide-y divide-white/5">
+                  {tasks.map((task, index) => (
+                    <motion.div
+                      key={task._id}
+                      layout
+                      initial={{ opacity: 0, y: 10 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      exit={{ opacity: 0, y: -10 }}
+                      className="py-4 border-b border-white/5 last:border-b-0 space-y-3"
+                    >
+                      <div className="flex items-start justify-between group">
+                        <div className="flex items-start gap-3 flex-1 min-w-0 pr-4">
+                          <button
+                            type="button"
+                            onClick={() => setExpandedTasks(prev => ({ ...prev, [task._id]: !prev[task._id] }))}
+                            className="mt-1 text-neutral-500 hover:text-neutral-300 cursor-pointer transition-colors"
+                          >
+                            <ChevronRight className={`w-3.5 h-3.5 transform transition-transform ${expandedTasks[task._id] ? 'rotate-90' : ''}`} />
+                          </button>
+
+                          <button
+                            type="button"
+                            onClick={() => toggleTaskStatus(task)}
+                            className="mt-0.5 text-neutral-500 hover:text-indigo-400 cursor-pointer transition-colors focus:outline-none"
+                          >
+                            {task.status === 'done' ? (
+                              <CheckCircle2 className="w-5 h-5 text-emerald-500 fill-emerald-500/10" />
+                            ) : (
+                              <Circle className="w-5 h-5" />
+                            )}
+                          </button>
+                          
+                          <div className="flex-1 min-w-0">
+                            <p className={`text-sm font-semibold text-neutral-200 truncate ${task.status === 'done' ? 'line-through text-neutral-500' : ''}`}>
+                              {task.title}
+                            </p>
+                            {task.description && (
+                              <p className="text-xs text-neutral-400 mt-1 line-clamp-2">
+                                {task.description}
+                              </p>
+                            )}
+                            <div className="flex flex-wrap items-center gap-2 mt-2">
+                              <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full ${
+                                task.priority === 'high' ? 'bg-red-500/10 text-red-400 border border-red-500/20' :
+                                task.priority === 'medium' ? 'bg-amber-500/10 text-amber-400 border border-amber-500/20' :
+                                'bg-blue-500/10 text-blue-400 border border-blue-500/20'
+                              }`}>
+                                {task.priority}
+                              </span>
+                              <span className="text-[10px] text-neutral-400 bg-neutral-900 px-2 py-0.5 rounded border border-white/5 flex items-center gap-1">
+                                <Clock className="w-3 h-3" /> {task.estimatedTime}m
+                              </span>
+                              {task.actualTime > 0 && (
+                                <span className="text-[10px] text-emerald-400 bg-emerald-950/20 px-2 py-0.5 rounded border border-emerald-500/10">
+                                  Logged: {task.actualTime}m
+                                </span>
+                              )}
+                              {task.category && (
+                                <span className="text-[10px] text-neutral-400 bg-neutral-900 px-2 py-0.5 rounded border border-white/5 flex items-center gap-1">
+                                  <Tag className="w-3 h-3" /> {task.category}
+                                </span>
+                              )}
+                              {task.source === 'agent-suggested' && (
+                                <span className="text-[10px] text-indigo-400 bg-indigo-950/20 px-2 py-0.5 rounded border border-indigo-500/10 flex items-center gap-0.5 font-medium">
+                                  <Sparkles className="w-2.5 h-2.5" /> AI
+                                </span>
+                              )}
+                              {task.timeBlock?.startTime && (
+                                <span className="text-[10px] text-indigo-400 bg-indigo-950/20 px-2 py-0.5 rounded border border-indigo-500/10 flex items-center gap-1 font-semibold">
+                                  <Clock className="w-3.5 h-3.5 text-neutral-500" /> {task.timeBlock.startTime} - {task.timeBlock.endTime}
+                                </span>
+                              )}
+                            </div>
+                          </div>
+                        </div>
+
+                        <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                          <button
+                            type="button"
+                            disabled={index === 0}
+                            onClick={() => moveTask(index, 'up')}
+                            className="p-1 rounded text-neutral-400 hover:text-neutral-200 hover:bg-neutral-800 disabled:opacity-30 cursor-pointer"
+                          >
+                            <ChevronUp className="w-4 h-4" />
+                          </button>
+                          <button
+                            type="button"
+                            disabled={index === tasks.length - 1}
+                            onClick={() => moveTask(index, 'down')}
+                            className="p-1 rounded text-neutral-400 hover:text-neutral-200 hover:bg-neutral-800 disabled:opacity-30 cursor-pointer"
+                          >
+                            <ChevronDown className="w-4 h-4" />
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => deleteTask(task._id)}
+                            className="p-1 rounded text-neutral-500 hover:text-red-400 hover:bg-neutral-800 cursor-pointer"
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </button>
                         </div>
                       </div>
-                    </div>
 
-                    <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                      <button
-                        type="button"
-                        disabled={index === 0}
-                        onClick={() => moveTask(index, 'up')}
-                        className="p-1 rounded text-neutral-400 hover:text-neutral-200 hover:bg-neutral-800 disabled:opacity-30 cursor-pointer"
-                      >
-                        <ChevronUp className="w-4 h-4" />
-                      </button>
-                      <button
-                        type="button"
-                        disabled={index === tasks.length - 1}
-                        onClick={() => moveTask(index, 'down')}
-                        className="p-1 rounded text-neutral-400 hover:text-neutral-200 hover:bg-neutral-800 disabled:opacity-30 cursor-pointer"
-                      >
-                        <ChevronDown className="w-4 h-4" />
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => deleteTask(task._id)}
-                        className="p-1 rounded text-neutral-500 hover:text-red-400 hover:bg-neutral-800 cursor-pointer"
-                      >
-                        <Trash2 className="w-4 h-4" />
-                      </button>
-                    </div>
-                  </motion.div>
-                ))}
-              </div>
-            )}
-          </div>
+                      {/* Expanded subtask block */}
+                      {expandedTasks[task._id] && (
+                        <div className="pl-12 pr-6 space-y-3 pb-2">
+                          {/* Progress Bar */}
+                          {task.subtasks && task.subtasks.length > 0 && (
+                            <div className="flex items-center gap-3">
+                              <div className="flex-1 bg-neutral-800 h-1.5 rounded-full overflow-hidden">
+                                <div 
+                                  className="bg-indigo-500 h-full transition-all duration-300"
+                                  style={{ 
+                                    width: `${Math.round(
+                                      (task.subtasks.filter((s: any) => s.completed).length / task.subtasks.length) * 100
+                                    )}%` 
+                                  }}
+                                ></div>
+                              </div>
+                              <span className="text-[10px] text-neutral-500 font-bold tracking-wide">
+                                {task.subtasks.filter((s: any) => s.completed).length}/{task.subtasks.length} Completed
+                              </span>
+                            </div>
+                          )}
+
+                          {/* Subtasks checklist */}
+                          {task.subtasks && task.subtasks.length > 0 && (
+                            <div className="space-y-2">
+                              {task.subtasks.map((sub: { title: string; completed: boolean }, sIdx: number) => (
+                                <div key={sIdx} className="flex items-center justify-between group/sub">
+                                  <div className="flex items-center gap-2 text-xs">
+                                    <button
+                                      type="button"
+                                      onClick={() => handleToggleSubtask(task, sIdx)}
+                                      className="text-neutral-500 hover:text-indigo-400 cursor-pointer focus:outline-none"
+                                    >
+                                      {sub.completed ? (
+                                        <CheckCircle2 className="w-3.5 h-3.5 text-indigo-400" />
+                                      ) : (
+                                        <Circle className="w-3.5 h-3.5" />
+                                      )}
+                                    </button>
+                                    <span className={`text-neutral-300 ${sub.completed ? 'line-through text-neutral-600' : ''}`}>
+                                      {sub.title}
+                                    </span>
+                                  </div>
+                                  <button
+                                    type="button"
+                                    onClick={() => handleDeleteSubtask(task._id, sIdx)}
+                                    className="opacity-0 group-hover/sub:opacity-100 p-0.5 rounded text-neutral-500 hover:text-red-400 hover:bg-neutral-800 transition-opacity cursor-pointer"
+                                  >
+                                    <X className="w-3 h-3" />
+                                  </button>
+                                </div>
+                              ))}
+                            </div>
+                          )}
+
+                          {/* Add subtask form */}
+                          <form onSubmit={(e) => handleAddSubtask(e, task._id)} className="flex items-center gap-2">
+                            <input
+                              type="text"
+                              placeholder="Add subtask..."
+                              className="flex-1 px-2.5 py-1 rounded bg-neutral-900 border border-white/5 text-[11px] text-neutral-100 placeholder-neutral-500 focus:outline-none focus:border-indigo-500/50"
+                              value={subtaskInputs[task._id] || ''}
+                              onChange={(e) => setSubtaskInputs(prev => ({ ...prev, [task._id]: e.target.value }))}
+                            />
+                            <button
+                              type="submit"
+                              disabled={!subtaskInputs[task._id]?.trim()}
+                              className="px-2.5 py-1 bg-neutral-800 hover:bg-neutral-700 text-neutral-300 font-semibold text-[10px] rounded cursor-pointer disabled:opacity-40 transition-colors"
+                            >
+                              Add
+                            </button>
+                          </form>
+                        </div>
+                      )}
+                    </motion.div>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
         </div>
 
-        {/* AI Agent Suggestions Panel (1 col) */}
-        <div className="space-y-4">
+        {/* AI Agent Suggestions & Focus Panel (1 col) */}
+        <div className="space-y-6">
+          {/* Focus Timer */}
+          <PomodoroTimer tasks={tasks} onTimerComplete={handleTimerComplete} />
           <div className="glass-panel rounded-xl p-6 shadow-xl relative overflow-hidden">
             {/* Background pattern */}
             <div className="absolute top-0 right-0 w-24 h-24 bg-indigo-500/5 rounded-full blur-2xl pointer-events-none"></div>

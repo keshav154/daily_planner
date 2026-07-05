@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import api from '../services/api';
 import { Sparkles, BookOpen, Clock, CheckCircle2, TrendingUp } from 'lucide-react';
+import { HeatmapChart } from './HeatmapChart';
 import { 
   ResponsiveContainer, AreaChart, Area, XAxis, YAxis, Tooltip, 
   BarChart, Bar, PieChart, Pie, Cell, Legend 
@@ -204,6 +205,11 @@ export const AnalyticsView: React.FC = () => {
                 No reflection generated yet today. Click 'Trigger Reflection' above to prompt the AI agent.
               </div>
             )}
+          </div>
+
+          {/* Productivity Heatmap & Streak Cards */}
+          <div className="my-6">
+            <HeatmapChart logs={logs} />
           </div>
 
           {/* Charts grid */}
