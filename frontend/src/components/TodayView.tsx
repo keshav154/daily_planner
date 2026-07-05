@@ -3,11 +3,12 @@ import api from '../services/api';
 import { 
   Sparkles, Clock, CheckCircle2, Circle, AlertCircle, 
   ChevronUp, ChevronDown, Trash2, Check, X, Tag, CornerDownRight, Zap,
-  ListTodo, CalendarRange, ChevronRight
+  ListTodo, CalendarRange, ChevronRight, Mic
 } from 'lucide-react';
 import { motion } from 'framer-motion';
 import { TimeBlockingGrid } from './TimeBlockingGrid';
 import { PomodoroTimer } from './PomodoroTimer';
+import { DailyBriefingCard } from './DailyBriefingCard';
 
 interface Task {
   _id: string;
@@ -54,6 +55,24 @@ export const TodayView: React.FC = () => {
   const [nlpText, setNlpText] = useState('');
   const [nlpParsing, setNlpParsing] = useState(false);
   const [planRunning, setPlanRunning] = useState(false);
+  const [listening, setListening] = useState(false);
+
+  const startVoiceInput = () => {
+    const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
+    if (!SpeechRecognition) {
+      alert('Speech recognition is not supported in this browser.');
+      return;
+    }
+    const recognition = new SpeechRecognition();
+    recognition.lang = 'en-US';
+    recognition.onstart = () => setListening(true);
+    recognition.onend = () => setListening(false);
+    recognition.onresult = (event: any) => {
+      const transcript = event.results[0][0].transcript;
+      setNlpText(transcript);
+    };
+    recognition.start();
+  };
 
   // Layout View mode: 'list' or 'calendar'
   const [viewMode, setViewMode] = useState<'list' | 'calendar'>('list');
@@ -303,6 +322,7 @@ export const TodayView: React.FC = () => {
 
   return (
     <div className="space-y-6">
+      <DailyBriefingCard />
       {/* Header bar */}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
@@ -362,12 +382,24 @@ export const TodayView: React.FC = () => {
           <input
             id="nlp-input"
             type="text"
-            className="w-full pl-11 pr-24 py-4 rounded-xl text-base text-neutral-100 placeholder-neutral-500 glass-input"
+            className="w-full pl-11 pr-36 py-4 rounded-xl text-base text-neutral-100 placeholder-neutral-500 glass-input"
             placeholder="Type a task in plain English (e.g. 'draft design doc by tomorrow 3pm, high priority, #project')..."
             value={nlpText}
             onChange={(e) => setNlpText(e.target.value)}
             disabled={nlpParsing}
           />
+          <button
+            type="button"
+            onClick={startVoiceInput}
+            className={`absolute right-24 top-2 py-2 px-2.5 rounded-lg border transition-colors cursor-pointer flex items-center justify-center ${
+              listening 
+                ? 'bg-red-500/20 border-red-500/30 text-red-400 animate-pulse' 
+                : 'bg-neutral-800 hover:bg-neutral-700 border-white/5 text-neutral-400 hover:text-neutral-200'
+            }`}
+            title="Speech-to-Text Input"
+          >
+            <Mic className="w-4 h-4" />
+          </button>
           <button
             id="nlp-submit-btn"
             type="submit"

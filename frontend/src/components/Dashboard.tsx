@@ -5,21 +5,33 @@ import { LogsView } from './LogsView';
 import { AnalyticsView } from './AnalyticsView';
 import { AgentMemoryView } from './AgentMemoryView';
 import { 
-  Sparkles, Calendar, BookOpen, BarChart3, LogOut, User, Menu, X 
+  Sparkles, Calendar, BookOpen, BarChart3, LogOut, User, Menu, X, 
+  CalendarDays, Heart, Copy, Repeat, Sun, Moon
 } from 'lucide-react';
 import { AgentChatPanel } from './AgentChatPanel';
+import { WeeklyCalendarView } from './WeeklyCalendarView';
+import { HabitTrackerView } from './HabitTrackerView';
+import { TaskTemplatesView } from './TaskTemplatesView';
+import { RecurringEventsManager } from './RecurringEventsManager';
+import { XPProgressBar } from './XPProgressBar';
+import { useTheme } from '../context/ThemeContext';
 
-type Tab = 'today' | 'logs' | 'analytics' | 'insights';
+type Tab = 'today' | 'logs' | 'analytics' | 'insights' | 'schedule' | 'habits' | 'templates' | 'recurring';
 
 export const Dashboard: React.FC = () => {
   const { user, logout } = useAuth();
+  const { theme, toggleTheme } = useTheme();
   const [activeTab, setActiveTab] = useState<Tab>('today');
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [chatOpen, setChatOpen] = useState(false);
 
   const navItems = [
     { id: 'today' as Tab, label: 'Today Planner', icon: Calendar },
+    { id: 'schedule' as Tab, label: 'Weekly Schedule', icon: CalendarDays },
     { id: 'logs' as Tab, label: 'Work History', icon: BookOpen },
+    { id: 'habits' as Tab, label: 'Daily Habits', icon: Heart },
+    { id: 'templates' as Tab, label: 'Task Templates', icon: Copy },
+    { id: 'recurring' as Tab, label: 'Recurring Rules', icon: Repeat },
     { id: 'analytics' as Tab, label: 'Analytics', icon: BarChart3 },
     { id: 'insights' as Tab, label: 'Agent Memory', icon: Sparkles },
   ];
@@ -34,6 +46,14 @@ export const Dashboard: React.FC = () => {
         return <AnalyticsView />;
       case 'insights':
         return <AgentMemoryView />;
+      case 'schedule':
+        return <WeeklyCalendarView />;
+      case 'habits':
+        return <HabitTrackerView />;
+      case 'templates':
+        return <TaskTemplatesView />;
+      case 'recurring':
+        return <RecurringEventsManager />;
     }
   };
 
@@ -95,6 +115,9 @@ export const Dashboard: React.FC = () => {
           })}
         </nav>
 
+        {/* XP Progress Bar */}
+        <XPProgressBar />
+
         {/* Sidebar Footer User profile */}
         <div className="p-4 border-t border-white/5 bg-neutral-900/20 space-y-3">
           <div className="flex items-center gap-3 px-2">
@@ -129,9 +152,18 @@ export const Dashboard: React.FC = () => {
             <Menu className="w-6 h-6" />
           </button>
           
-          <div className="flex items-center gap-2 text-xs text-neutral-400 font-semibold bg-neutral-900 px-3 py-1.5 rounded-full border border-white/5 ml-auto">
-            <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
-            <span>Agent Active — Timezone: {user?.timezone}</span>
+          <div className="flex items-center gap-4 ml-auto">
+            <button
+              onClick={toggleTheme}
+              className="p-2 rounded-full hover:bg-neutral-900 text-neutral-400 hover:text-neutral-200 cursor-pointer border border-white/5 bg-neutral-950/40"
+              title={theme === 'dark' ? 'Switch to light theme' : 'Switch to dark theme'}
+            >
+              {theme === 'dark' ? <Sun className="w-4 h-4 text-amber-400" /> : <Moon className="w-4 h-4 text-indigo-400" />}
+            </button>
+            <div className="flex items-center gap-2 text-xs text-neutral-400 font-semibold bg-neutral-900 px-3 py-1.5 rounded-full border border-white/5">
+              <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
+              <span>Agent Active — Timezone: {user?.timezone}</span>
+            </div>
           </div>
         </header>
 

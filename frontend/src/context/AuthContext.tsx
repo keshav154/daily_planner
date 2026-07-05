@@ -5,6 +5,10 @@ export interface IUser {
   id: string;
   email: string;
   timezone: string;
+  theme?: string;
+  xp?: number;
+  level?: number;
+  achievements?: string[];
   preferences: {
     workingHoursStart: string;
     workingHoursEnd: string;
@@ -19,6 +23,7 @@ interface AuthContextType {
   login: (email: string, password: string) => Promise<void>;
   register: (email: string, password: string, timezone?: string) => Promise<void>;
   logout: () => void;
+  updateUser: (updates: Partial<IUser>) => void;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -83,8 +88,12 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     setLoading(false);
   };
 
+  const updateUser = (updates: Partial<IUser>) => {
+    setUser(prev => prev ? { ...prev, ...updates } : null);
+  };
+
   return (
-    <AuthContext.Provider value={{ user, token, loading, login, register, logout }}>
+    <AuthContext.Provider value={{ user, token, loading, login, register, logout, updateUser }}>
       {children}
     </AuthContext.Provider>
   );

@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Play, Pause, RotateCcw, Volume2, Sparkles } from 'lucide-react';
+import { Play, Pause, RotateCcw, Volume2, Sparkles, Maximize2, Minimize2 } from 'lucide-react';
 
 interface Task {
   _id: string;
@@ -20,6 +20,66 @@ export const PomodoroTimer: React.FC<PomodoroTimerProps> = ({ tasks, onTimerComp
   const [isRunning, setIsRunning] = useState(false);
   const [sound, setSound] = useState<SoundType>('off');
   const [preset, setPreset] = useState(25); // 25 or 50
+  const [focusMode, setFocusMode] = useState(false);
+  const [quoteIndex, setQuoteIndex] = useState(0);
+  const wakeLockRef = useRef<any>(null);
+
+  const MOTIVATIONAL_QUOTES = [
+    "Focus is a muscle, and you are building it right now.",
+    "Deep work produces rare and valuable outcomes.",
+    "One task at a time. Clear the noise.",
+    "Your future self will thank you for this focus session.",
+    "Action is the foundational key to all success.",
+    "Stay with the breath. Stay with the work."
+  ];
+
+  // Rotate motivational quotes
+  useEffect(() => {
+    let interval: any = null;
+    if (focusMode && isRunning) {
+      interval = setInterval(() => {
+        setQuoteIndex(prev => (prev + 1) % MOTIVATIONAL_QUOTES.length);
+      }, 30000);
+    }
+    return () => {
+      if (interval) clearInterval(interval);
+    };
+  }, [focusMode, isRunning]);
+
+  // Request Wake Lock to prevent screen sleep
+  useEffect(() => {
+    const requestWakeLock = async () => {
+      if ('wakeLock' in navigator && focusMode && isRunning) {
+        try {
+          const lock = await (navigator as any).wakeLock.request('screen');
+          wakeLockRef.current = lock;
+        } catch (err) {
+          console.warn('Screen wake lock failed:', err);
+        }
+      }
+    };
+
+    const releaseWakeLock = async () => {
+      if (wakeLockRef.current) {
+        try {
+          await wakeLockRef.current.release();
+          wakeLockRef.current = null;
+        } catch (err) {
+          console.warn('Screen wake lock release failed:', err);
+        }
+      }
+    };
+
+    if (focusMode && isRunning) {
+      requestWakeLock();
+    } else {
+      releaseWakeLock();
+    }
+
+    return () => {
+      releaseWakeLock();
+    };
+  }, [focusMode, isRunning]);
 
   const timerIntervalRef = useRef<any>(null);
   
@@ -204,9 +264,18 @@ export const PomodoroTimer: React.FC<PomodoroTimerProps> = ({ tasks, onTimerComp
   return (
     <div className="glass-panel rounded-xl p-5 shadow-xl relative overflow-hidden flex flex-col items-center text-center space-y-4">
       {/* Small sparkles header */}
-      <div className="flex items-center gap-1.5 text-xs text-indigo-400 font-semibold uppercase tracking-wider select-none">
-        <Sparkles className="w-3.5 h-3.5 animate-pulse" />
-        <span>Focus Pomodoro</span>
+      <div className="flex items-center justify-between w-full select-none">
+        <div className="flex items-center gap-1.5 text-xs text-indigo-400 font-semibold uppercase tracking-wider">
+          <Sparkles className="w-3.5 h-3.5 animate-pulse" />
+          <span>Focus Pomodoro</span>
+        </div>
+        <button
+          onClick={() => setFocusMode(true)}
+          className="text-neutral-500 hover:text-neutral-300 p-1 rounded-md cursor-pointer hover:bg-neutral-800 transition-colors"
+          title="Enter Full Screen Focus Mode"
+        >
+          <Maximize2 className="w-3.5 h-3.5" />
+        </button>
       </div>
 
       {/* Preset select */}
@@ -292,6 +361,87 @@ export const PomodoroTimer: React.FC<PomodoroTimerProps> = ({ tasks, onTimerComp
           <RotateCcw className="w-4 h-4" />
         </button>
       </div>
+
+      {/* Focus Mode Full-Screen Overlay */}
+      {focusMode && (
+        <div className="fixed inset-0 bg-neutral-950/98 backdrop-blur-md z-50 flex flex-col items-center justify-center p-6 text-center select-none animate-fadeIn">
+          {/* Close button */}
+          <button
+            onClick={() => setFocusMode(false)}
+            className="absolute top-6 right-6 p-2 rounded-full bg-neutral-900 border border-white/5 text-neutral-400 hover:text-neutral-200 hover:bg-neutral-800 cursor-pointer transition-colors"
+            title="Exit Focus Mode"
+          >
+            <Minimize2 className="w-5 h-5" />
+          </button>
+
+          {/* Sparkles active indicator */}
+          <div className="flex items-center gap-1.5 text-[10px] text-indigo-400 font-bold uppercase tracking-widest animate-pulse mb-6">
+            <Sparkles className="w-4 h-4" />
+            <span>Deep Focus Active</span>
+          </div>
+
+          {/* Large Countdown */}
+          <div className="text-8xl font-black text-neutral-100 font-mono tracking-tight my-4">
+            {formatTime(timeLeft)}
+          </div>
+
+          {/* Active Goal */}
+          <div className="max-w-md mt-2 mb-8">
+            <p className="text-[10px] font-bold text-neutral-500 uppercase tracking-widest">Active Focus Task</p>
+            <h3 className="text-lg font-bold text-neutral-200 mt-1 select-text">
+              {tasks.find(t => t._id === activeTaskId)?.title || 'General Deep Work'}
+            </h3>
+          </div>
+
+          {/* Motivational Quote */}
+          <div className="h-12 flex items-center justify-center max-w-sm mb-12">
+            <p className="text-xs italic text-neutral-400 font-medium">
+              "{MOTIVATIONAL_QUOTES[quoteIndex]}"
+            </p>
+          </div>
+
+          {/* Sound Controls in Focus Mode */}
+          <div className="flex items-center gap-3 bg-neutral-900/60 p-3 rounded-2xl border border-white/5 mb-8">
+            <span className="text-[10px] text-neutral-500 font-bold uppercase tracking-wider">Ambient:</span>
+            <div className="flex gap-1.5">
+              {(['off', 'white', 'rain', 'ocean'] as SoundType[]).map((s) => (
+                <button
+                  key={s}
+                  onClick={() => setSound(s)}
+                  className={`px-3 py-1 text-[10px] font-bold rounded-lg capitalize cursor-pointer transition-all ${
+                    sound === s 
+                      ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-600/10' 
+                      : 'text-neutral-400 hover:text-neutral-200 hover:bg-neutral-800'
+                  }`}
+                >
+                  {s}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* Timer Action Controls */}
+          <div className="flex items-center gap-4">
+            <button
+              onClick={handleTogglePlay}
+              className={`w-14 h-14 rounded-full flex items-center justify-center text-white cursor-pointer shadow-lg transition-transform hover:scale-105 ${
+                isRunning 
+                  ? 'bg-amber-600 hover:bg-amber-500 shadow-amber-600/15' 
+                  : 'bg-indigo-600 hover:bg-indigo-500 shadow-indigo-600/15'
+              }`}
+            >
+              {isRunning ? <Pause className="w-5 h-5" /> : <Play className="w-5 h-5 pl-0.5" />}
+            </button>
+            <button
+              onClick={handleReset}
+              className="w-14 h-14 rounded-full bg-neutral-900 hover:bg-neutral-800 text-neutral-400 hover:text-neutral-200 flex items-center justify-center cursor-pointer border border-white/5 transition-all"
+              title="Reset timer"
+            >
+              <RotateCcw className="w-4.5 h-4.5" />
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
