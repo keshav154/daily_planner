@@ -10,11 +10,11 @@ export interface ChatMessage {
 
 /**
  * Communicates with the OpenAI-compatible NVIDIA NIM inference endpoint.
- * Default model: meta/llama-3.1-405b-instruct
+ * Default model: meta/llama-3.1-70b-instruct
  */
 export const queryNvidiaNim = async (
   messages: ChatMessage[],
-  model: string = 'meta/llama-3.1-405b-instruct',
+  model: string = process.env.NVIDIA_MODEL || 'meta/llama-3.1-70b-instruct',
   temperature: number = 0.2,
   maxTokens: number = 1000
 ): Promise<string> => {

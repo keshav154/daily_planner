@@ -139,7 +139,7 @@ Return ONLY a JSON object matching this schema, no other text or explanation:
     if (isNvidiaActive) {
       responseText = await queryNvidiaNim([
         { role: 'user', content: prompt }
-      ], 'meta/llama-3.1-405b-instruct', 0.2, 1500);
+      ], process.env.NVIDIA_MODEL || 'meta/llama-3.1-70b-instruct', 0.2, 1500);
     } else if (client) {
       const response = await client.messages.create({
         model: 'claude-3-5-sonnet-20241022',
@@ -315,7 +315,7 @@ Return ONLY a JSON object matching this schema, no other text:
     if (isNvidiaActive) {
       responseText = await queryNvidiaNim([
         { role: 'user', content: prompt }
-      ], 'meta/llama-3.1-405b-instruct', 0.2, 1000);
+      ], process.env.NVIDIA_MODEL || 'meta/llama-3.1-70b-instruct', 0.2, 1000);
     } else if (client) {
       const response = await client.messages.create({
         model: 'claude-3-5-sonnet-20241022',

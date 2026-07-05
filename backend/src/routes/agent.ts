@@ -292,7 +292,7 @@ Format output as raw JSON only. Do not wrap in markdown \`\`\`json block.`;
     ];
 
     if (isNvidiaActive) {
-      responseText = await queryNvidiaNim(messages, 'meta/llama-3.1-405b-instruct', 0.5, 1000);
+      responseText = await queryNvidiaNim(messages, process.env.NVIDIA_MODEL || 'meta/llama-3.1-70b-instruct', 0.5, 1000);
     } else if (anthropicApiKey && anthropicApiKey !== 'your_anthropic_api_key_here') {
       const claudeMessages = messages.filter(m => m.role !== 'system');
       const anthropic = new Anthropic({ apiKey: anthropicApiKey });
