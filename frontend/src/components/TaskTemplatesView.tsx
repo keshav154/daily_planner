@@ -86,17 +86,49 @@ export const TaskTemplatesView: React.FC = () => {
   };
 
   const handleSaveTemplate = async () => {
-    if (!templateName.trim() || tempTasks.length === 0) return;
+    if (!templateName.trim()) {
+      alert('Please enter a template name first.');
+      return;
+    }
+
+    let finalTasks = [...tempTasks];
+
+    // If they haven't explicitly clicked 'Add Task to Template', but have filled out a task title, auto-add it.
+    if (finalTasks.length === 0) {
+      if (taskTitle.trim()) {
+        const subtasks = draftSubtasks
+          .split(',')
+          .map(s => s.trim())
+          .filter(s => s.length > 0)
+          .map(title => ({ title }));
+
+        finalTasks.push({
+          title: taskTitle.trim(),
+          estimatedTime: Number(taskEst),
+          priority: taskPriority,
+          category: taskCategory,
+          subtasks
+        });
+      } else {
+        alert('Please add at least one task to the template first.');
+        return;
+      }
+    }
+
     try {
       await api.post('/templates', {
         name: templateName,
-        tasks: tempTasks
+        tasks: finalTasks
       });
       fetchTemplates();
       setTemplateName('');
       setTempTasks([]);
-    } catch (err) {
+      setTaskTitle('');
+      setDraftSubtasks('');
+      alert('Task template saved successfully!');
+    } catch (err: any) {
       console.error('Failed to save template:', err);
+      alert('Failed to save template: ' + (err.response?.data?.error || err.message));
     }
   };
 
