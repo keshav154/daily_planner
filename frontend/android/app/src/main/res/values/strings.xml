@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">Kortex by Keshav</string>
+    <string name="title_activity_main">Kortex by Keshav</string>
+    <string name="package_name">com.keshav.kortex</string>
+    <string name="custom_url_scheme">com.keshav.kortex</string>
+</resources>

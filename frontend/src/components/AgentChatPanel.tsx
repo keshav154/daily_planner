@@ -35,7 +35,7 @@ export const AgentChatPanel: React.FC<AgentChatPanelProps> = ({
   const [messages, setMessages] = useState<ChatMessage[]>([
     {
       role: 'assistant',
-      content: "Hello! I am your Aether Planner Agent. I can help you optimize your schedule, prioritize high energy deep work, or break down complex tasks. Try asking me: 'Reschedule my afternoon' or 'Add a high priority task to write the review document by 4pm tomorrow'."
+      content: "Hello! I am your Kortex Assistant, custom-built for Keshav. I can help you optimize your schedule, prioritize high energy deep work, or break down complex tasks. Try asking me: 'Reschedule my afternoon' or 'Add a high priority task to write the review document by 4pm tomorrow'."
     }
   ]);
   const [input, setInput] = useState('');
@@ -153,7 +153,7 @@ export const AgentChatPanel: React.FC<AgentChatPanelProps> = ({
                 <Sparkles className="w-4.5 h-4.5 animate-pulse" />
               </div>
               <div>
-                <h3 className="text-sm font-bold text-neutral-100">Aether AI Copilot</h3>
+                <h3 className="text-sm font-bold text-neutral-100">Kortex AI Copilot</h3>
                 <p className="text-[10px] text-emerald-400 font-semibold flex items-center gap-1">
                   <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></span>
                   Active Chat Mode

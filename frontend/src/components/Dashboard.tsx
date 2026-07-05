@@ -58,7 +58,7 @@ export const Dashboard: React.FC = () => {
               <Sparkles className="w-4 h-4" />
             </div>
             <span className="font-extrabold font-sans text-base tracking-tight bg-gradient-to-r from-neutral-100 to-neutral-400 bg-clip-text text-transparent">
-              Aether Planner
+              Kortex by Keshav
             </span>
           </div>
           <button 

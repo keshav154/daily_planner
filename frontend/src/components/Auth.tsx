@@ -44,10 +44,10 @@ export const Auth: React.FC = () => {
             <Sparkles className="w-6 h-6" />
           </div>
           <h1 className="text-2xl font-bold font-sans text-neutral-100 tracking-tight">
-            {isLogin ? 'Welcome to Aether' : 'Create an Account'}
+            {isLogin ? 'Welcome to Kortex' : 'Create a Kortex Account'}
           </h1>
           <p className="text-sm text-neutral-400 mt-1">
-            {isLogin ? 'Sign in to access your agentic daily planner' : 'Join and start optimizing your days'}
+            {isLogin ? 'Sign in to access Keshav\'s daily planner' : 'Join Keshav\'s neural workspace'}
           </p>
         </div>
 
