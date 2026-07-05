@@ -276,6 +276,7 @@ export const runReflectionLoop = async (
   userId: string,
   targetDateStr?: string
 ): Promise<any> => {
+  const context = await gatherUserContext(userId, targetDateStr);
   const nvidiaKey = process.env.NVIDIA_API_KEY;
   const isNvidiaActive = nvidiaKey && nvidiaKey !== 'your_nvidia_api_key_here';
   const client = getAnthropicClient();
@@ -289,9 +290,9 @@ export const runReflectionLoop = async (
 Analyze task completion rates, durations (estimates vs actual time), and highlight recurring trends.
 
 Today's Context:
-- Active Tasks: ${JSON.stringify(context.activeTasks.map(t => ({ title: t.title, status: t.status, estimated: t.estimatedTime, actual: t.actualTime, priority: t.priority })), null, 2)}
-- Work Logs: ${JSON.stringify(context.dailyLogs.map(l => ({ title: l.title, duration: l.duration, notes: l.notes })), null, 2)}
-- Existing Memories: ${JSON.stringify(context.memories.map(m => m.content), null, 2)}
+- Active Tasks: ${JSON.stringify(context.activeTasks.map((t: any) => ({ title: t.title, status: t.status, estimated: t.estimatedTime, actual: t.actualTime, priority: t.priority })), null, 2)}
+- Work Logs: ${JSON.stringify(context.dailyLogs.map((l: any) => ({ title: l.title, duration: l.duration, notes: l.notes })), null, 2)}
+- Existing Memories: ${JSON.stringify(context.memories.map((m: any) => m.content), null, 2)}
 
 Provide:
 1. A summary paragraph reflecting on the day (achievements, issues, streaks).
