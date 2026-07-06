@@ -1,9 +1,10 @@
 import React, { useState } from 'react';
-import { Brain, Layers, FileText } from 'lucide-react';
+import { Brain, Layers, FileText, ClipboardCopy } from 'lucide-react';
 import { TaskDecomposer } from './TaskDecomposer';
 import { MeetingSummariser } from './MeetingSummariser';
+import { ClipboardImporter } from './ClipboardImporter';
 
-type Tab = 'decomposer' | 'meeting';
+type Tab = 'decomposer' | 'meeting' | 'clipboard';
 
 export const AIToolsView: React.FC = () => {
   const [activeTab, setActiveTab] = useState<Tab>('decomposer');
@@ -11,6 +12,7 @@ export const AIToolsView: React.FC = () => {
   const tabs: { id: Tab; label: string; icon: React.ElementType }[] = [
     { id: 'decomposer', label: 'Task Decomposer', icon: Layers },
     { id: 'meeting', label: 'Meeting Summariser', icon: FileText },
+    { id: 'clipboard', label: 'Clipboard Importer', icon: ClipboardCopy },
   ];
 
   return (
@@ -58,6 +60,7 @@ export const AIToolsView: React.FC = () => {
       {/* Tab Content */}
       {activeTab === 'decomposer' && <TaskDecomposer />}
       {activeTab === 'meeting' && <MeetingSummariser />}
+      {activeTab === 'clipboard' && <ClipboardImporter />}
     </div>
   );
 };

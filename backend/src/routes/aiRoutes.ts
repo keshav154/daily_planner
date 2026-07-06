@@ -750,4 +750,92 @@ Return ONLY valid JSON:
   }
 });
 
+// ─────────────────────────────────────────────────────────────────────────────
+// POST /parse-clipboard
+// ─────────────────────────────────────────────────────────────────────────────
+router.post('/parse-clipboard', async (req: Request, res: Response) => {
+  try {
+    const { text } = req.body as { text: string };
+    if (!text || !text.trim()) {
+      return res.status(400).json({ error: 'text content is required' });
+    }
+
+    const prompt = `You are an AI task extraction assistant. The user has copied raw text from their workspace (Jira ticket details, Outlook emails, calendar event notes, or Slack chats).
+Analyze the following text and extract all actionable tasks:
+"""
+${text}
+"""
+
+Guidelines:
+- If Jira tickets are mentioned (e.g. "DEV-204" or "[PRJ-99]"), prefix the task title with the Jira key: e.g. "[DEV-204] Fix login crash".
+- Try to estimate task duration in minutes (estimatedTime). Story points can be mapped: 1pt = 60m, 2pt = 120m, 3pt = 180m, etc. Default to 60 if unsure.
+- Deduce priority (high|medium|low) and category (Work|Personal|Health|Learning) from context.
+- Extract any subtasks if the task involves multiple steps.
+
+Return ONLY a valid JSON array:
+[
+  {
+    "title": "task title",
+    "description": "short description or ticket summary",
+    "priority": "high|medium|low",
+    "estimatedTime": 60,
+    "category": "Work",
+    "subtasks": ["subtask 1", "subtask 2"]
+  }
+]`;
+
+    const raw = await queryLLM(prompt, 800);
+    if (raw) {
+      const parsed = parseAiJson<any[]>(raw);
+      if (parsed && Array.isArray(parsed)) {
+        return res.json({ tasks: parsed });
+      }
+    }
+
+    // Offline fallback: regex line scanner for Jira ticket keys (PRJ-123) and bullets
+    const tasks: any[] = [];
+    const jiraPattern = /([A-Z]{2,10}-\d+)/gi;
+    const lines = text.split('\n').map(l => l.trim()).filter(l => l.length > 5);
+
+    for (const line of lines) {
+      const jiraMatch = line.match(jiraPattern);
+      if (jiraMatch) {
+        tasks.push({
+          title: line.replace(/^[-*•]\s*/, ''),
+          description: `Extracted from Jira ticket mention: ${jiraMatch.join(', ')}`,
+          priority: 'high',
+          estimatedTime: 60,
+          category: 'Work',
+          subtasks: []
+        });
+      } else if (/^[-*•]/.test(line)) {
+        tasks.push({
+          title: line.replace(/^[-*•]\s*/, ''),
+          description: 'Extracted list item.',
+          priority: 'medium',
+          estimatedTime: 30,
+          category: 'Work',
+          subtasks: []
+        });
+      }
+    }
+
+    // Default task if nothing was matched
+    if (tasks.length === 0) {
+      tasks.push({
+        title: 'Review pasted workspace clipboard items',
+        description: 'Check pasted notes for action items.',
+        priority: 'medium',
+        estimatedTime: 30,
+        category: 'Work',
+        subtasks: []
+      });
+    }
+
+    return res.json({ tasks });
+  } catch (error: any) {
+    return res.status(500).json({ error: error.message });
+  }
+});
+
 export default router;
