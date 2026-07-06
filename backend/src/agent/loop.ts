@@ -2,6 +2,7 @@ import Anthropic from '@anthropic-ai/sdk';
 import mongoose from 'mongoose';
 import { User, Task, Log, AgentMemory, AgentRun, ITask, ILog, IAgentMemory } from '../models/Schemas';
 import { queryNvidiaNim } from '../config/nvidia';
+import { getRelevantMemories } from '../services/similarity';
 
 // Instantiate Anthropic Client
 const getAnthropicClient = (): Anthropic | null => {
@@ -10,6 +11,30 @@ const getAnthropicClient = (): Anthropic | null => {
     return null;
   }
   return new Anthropic({ apiKey });
+};
+
+// Helper to query LLM with fallback
+const askLLM = async (
+  prompt: string,
+  systemPrompt: string,
+  isNvidiaActive: boolean,
+  client: Anthropic | null
+): Promise<string> => {
+  if (isNvidiaActive) {
+    return await queryNvidiaNim([
+      { role: 'system', content: systemPrompt },
+      { role: 'user', content: prompt }
+    ], process.env.NVIDIA_MODEL || 'meta/llama-3.1-70b-instruct', 0.3, 1500);
+  } else if (client) {
+    const response = await client.messages.create({
+      model: 'claude-3-5-sonnet-20241022',
+      max_tokens: 1500,
+      system: systemPrompt,
+      messages: [{ role: 'user', content: prompt }]
+    });
+    return response.content[0].type === 'text' ? response.content[0].text : '';
+  }
+  throw new Error('No LLM client active');
 };
 
 // ----------------------------------------------------
@@ -43,11 +68,9 @@ export const gatherUserContext = async (userId: string, targetDateStr?: string) 
     timestamp: { $gte: startOfDay, $lte: endOfDay }
   }).sort({ timestamp: -1 });
 
-  // Fetch active insights from memory
-  const memories = await AgentMemory.find({
-    userId,
-    feedback: { $ne: 'rejected' }
-  }).sort({ updatedAt: -1 }).limit(10);
+  // Fetch semantically matched memories based on current tasks titles
+  const tasksQuery = activeTasks.map(t => t.title).join(' ');
+  const memories = await getRelevantMemories(userId, tasksQuery, 10);
 
   // Fetch past completion stats (last 7 days completed tasks vs all tasks)
   const sevenDaysAgo = new Date();
@@ -80,7 +103,7 @@ export const gatherUserContext = async (userId: string, targetDateStr?: string) 
 };
 
 // ----------------------------------------------------
-// 2. Plan & Act: Execute Planning Loop
+// 2. Plan & Act: Execute Planning Loop (Chain-of-Thought Upgrade)
 // ----------------------------------------------------
 export const runPlanningLoop = async (
   userId: string,
@@ -88,7 +111,7 @@ export const runPlanningLoop = async (
 ): Promise<any> => {
   const context = await gatherUserContext(userId);
   const nvidiaKey = process.env.NVIDIA_API_KEY;
-  const isNvidiaActive = nvidiaKey && nvidiaKey !== 'your_nvidia_api_key_here';
+  const isNvidiaActive = !!(nvidiaKey && nvidiaKey !== 'your_nvidia_api_key_here');
   const client = getAnthropicClient();
 
   if (!client && !isNvidiaActive) {
@@ -96,60 +119,94 @@ export const runPlanningLoop = async (
   }
 
   try {
-    const prompt = `You are a personalized Productivity Agent. Your job is to analyze the user's daily context and generate a daily plan.
-You must analyze constraints, overdue tasks, user preferences, logs, and learned memories, and return a structured analysis.
+    const systemPrompt = 'You are a deep-thinking, highly analytical Productivity Co-pilot Agent.';
+
+    const draftPrompt = `You are a personalized Productivity Agent. Your job is to analyze the user's daily context and draft a daily plan.
+Analyze constraints, overdue tasks, user preferences, logs, and learned memories:
 
 Context Snapshot:
 - Current Time (UTC): ${context.currentTime}
 - User Timezone/Working Hours: ${context.user.timezone} (${context.user.preferences.workingHoursStart} to ${context.user.preferences.workingHoursEnd})
 - Peak Energy: ${context.user.preferences.peakEnergyTime}
 - Active Tasks (Today + Overdue):
-${JSON.stringify(context.activeTasks.map(t => ({ id: t._id, title: t.title, priority: t.priority, status: t.status, dueDate: t.dueDate, estimatedTime: t.estimatedTime, actualTime: t.actualTime, order: t.order, created: t.createdAt })), null, 2)}
-- Daily Logs (what they worked on today):
-${JSON.stringify(context.dailyLogs.map(l => ({ title: l.title, duration: l.duration, timestamp: l.timestamp })), null, 2)}
-- Agent Memory (learned user patterns):
+${JSON.stringify(context.activeTasks.map(t => ({ id: t._id, title: t.title, priority: t.priority, status: t.status, estimatedTime: t.estimatedTime, order: t.order })), null, 2)}
+- Daily Logs (today):
+${JSON.stringify(context.dailyLogs.map(l => ({ title: l.title, duration: l.duration })), null, 2)}
+- Learned Memories:
 ${JSON.stringify(context.memories.map(m => m.content), null, 2)}
-- 7-Day Completion Rate: ${context.stats.completionRate}%
 
 Your task:
-1. Provide a short, constructive rationale explaining your reasoning (e.g. spotting overdue items, aligning high priority items to peak energy hours).
-2. Generate concrete recommendations/suggestions for the user. Action types allowed:
-   - "reorder": suggest sorting task IDs in a specific optimal order. Provide details: { orderedTaskIds: string[] }
-   - "suggest_time_block": suggest blocking time for a task. Provide details: { taskId: string, startTime: string, duration: number }
-   - "break_down": suggest dividing a complex/vague task into subtasks. Provide details: { taskId: string, subtasks: string[] }
-   - "nudge": suggest addressing a task pushed back or delayed. Provide details: { taskId: string, message: string }
-   - "create_task": suggest a new task based on logs or memory (e.g., "Reflect on coding session"). Provide details: { title: string, estimatedTime: number }
+1. Provide a short, constructive rationale.
+2. Generate recommendations/suggestions. Action types allowed:
+   - "reorder": { orderedTaskIds: string[] }
+   - "suggest_time_block": { taskId: string, startTime: string, duration: number }
+   - "break_down": { taskId: string, subtasks: string[] }
+   - "nudge": { taskId: string, message: string }
+   - "create_task": { title: string, estimatedTime: number }
 
-Return ONLY a JSON object matching this schema, no other text or explanation:
+Format output strictly as JSON:
 {
-  "rationale": "String analyzing state",
+  "rationale": "Draft analysis of state",
   "suggestions": [
     {
-      "id": "unique-suggestion-slug-1",
-      "taskId": "mongoose-task-id-if-applies-else-omit",
+      "id": "slug",
+      "taskId": "task-id",
       "actionType": "reorder | suggest_time_block | break_down | nudge | create_task",
-      "description": "Clear display instruction for the user",
+      "description": "Suggestion instructions",
       "details": { ... }
     }
   ]
 }`;
 
-    let responseText = '';
+    // STAGE 1: DRAFT
+    logToBackgroundLogs('info', `Drafting daily plan for ${context.user.email} (Trigger: ${trigger})`);
+    const draftText = await askLLM(draftPrompt, systemPrompt, isNvidiaActive, client);
 
-    if (isNvidiaActive) {
-      responseText = await queryNvidiaNim([
-        { role: 'user', content: prompt }
-      ], process.env.NVIDIA_MODEL || 'meta/llama-3.1-70b-instruct', 0.2, 1500);
-    } else if (client) {
-      const response = await client.messages.create({
-        model: 'claude-3-5-sonnet-20241022',
-        max_tokens: 1500,
-        messages: [{ role: 'user', content: prompt }]
-      });
-      responseText = response.content[0].type === 'text' ? response.content[0].text : '';
+    // STAGE 2: CRITIQUE / SELF-CORRECTION
+    logToBackgroundLogs('info', `Executing self-critique loop stage for ${context.user.email}`);
+    const critiquePrompt = `You are a strict daily schedule auditor. Critique this draft daily planner recommendations JSON:
+${draftText}
+
+Using:
+- User timezone & preferences: ${context.user.preferences.workingHoursStart} to ${context.user.preferences.workingHoursEnd}
+- Active Tasks count: ${context.activeTasks.length}
+- Target memories: ${JSON.stringify(context.memories.map(m => m.content))}
+
+Review:
+1. Overbooking check: Are there too many hours planned?
+2. Energy check: Are high-priority items aligned with peak hours?
+3. Memory compliance check: Does it contradict past user feedback or memories?
+
+Identify weaknesses or improvements needed. Write a short paragraph summarizing your feedback.`;
+
+    const critiqueText = await askLLM(critiquePrompt, systemPrompt, isNvidiaActive, client);
+
+    // STAGE 3: REFINE
+    logToBackgroundLogs('info', `Refining final recommendations based on critique feedback`);
+    const refinementPrompt = `Here is your draft planner recommendations:
+${draftText}
+
+Here is the audit critique:
+${critiqueText}
+
+Refine your planner recommendations to produce the final, optimized plan.
+Return ONLY a valid JSON object matching the original schema. No explanations, no markdown except raw JSON:
+{
+  "rationale": "Refined rationale addressing criticisms and optimizing schedule",
+  "suggestions": [
+    {
+      "id": "unique-slug",
+      "taskId": "task-id",
+      "actionType": "reorder | suggest_time_block | break_down | nudge | create_task",
+      "description": "Clear display instruction",
+      "details": { ... }
     }
+  ]
+}`;
 
-    let cleanJson = responseText.trim();
+    const refinedText = await askLLM(refinementPrompt, systemPrompt, isNvidiaActive, client);
+
+    let cleanJson = refinedText.trim();
     if (cleanJson.startsWith('```json')) {
       cleanJson = cleanJson.slice(7);
     }
@@ -178,6 +235,14 @@ Return ONLY a JSON object matching this schema, no other text or explanation:
     console.error('Claude API failed in Planning Loop. Falling back.', error);
     return runMockPlanning(userId, trigger, context);
   }
+};
+
+// Helper for logger debugging
+const logToBackgroundLogs = (type: 'info' | 'success' | 'warn' | 'error', msg: string) => {
+  try {
+    const { backgroundLogs } = require('../services/backgroundPlanner');
+    backgroundLogs.push({ timestamp: new Date(), type, message: msg });
+  } catch (e) {}
 };
 
 // Fallback Mock Planning if offline

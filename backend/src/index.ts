@@ -55,7 +55,11 @@ app.use((err: any, req: express.Request, res: express.Response, next: express.Ne
   res.status(500).json({ error: 'An unexpected server error occurred.' });
 });
 
+import { startBackgroundScheduler } from './services/backgroundPlanner';
+
 // Start Server
 app.listen(PORT, () => {
   console.log(`Daily Planner Agent Server running on port ${PORT}`);
+  // Start background auto-planner checks
+  startBackgroundScheduler();
 });

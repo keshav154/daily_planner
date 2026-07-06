@@ -7,9 +7,11 @@ import { AgentMemoryView } from './AgentMemoryView';
 import { AIToolsView } from './AIToolsView';
 import { WeeklyReviewView } from './WeeklyReviewView';
 import { BurnoutAlert } from './BurnoutAlert';
+import { VirtualBoardroom } from './VirtualBoardroom';
+import { CoPilotDashboard } from './CoPilotDashboard';
 import { 
   Sparkles, Calendar, BookOpen, BarChart3, LogOut, User, Menu, X, 
-  CalendarDays, Heart, Copy, Repeat, Sun, Moon, Brain, BarChart2
+  CalendarDays, Heart, Copy, Repeat, Sun, Moon, Brain, BarChart2, Users, Cpu
 } from 'lucide-react';
 import { AgentChatPanel } from './AgentChatPanel';
 import { WeeklyCalendarView } from './WeeklyCalendarView';
@@ -19,7 +21,7 @@ import { RecurringEventsManager } from './RecurringEventsManager';
 import { XPProgressBar } from './XPProgressBar';
 import { useTheme } from '../context/ThemeContext';
 
-type Tab = 'today' | 'logs' | 'analytics' | 'insights' | 'schedule' | 'habits' | 'templates' | 'recurring' | 'ai-tools' | 'weekly-review';
+type Tab = 'today' | 'logs' | 'analytics' | 'insights' | 'schedule' | 'habits' | 'templates' | 'recurring' | 'ai-tools' | 'weekly-review' | 'boardroom' | 'copilot-config';
 
 export const Dashboard: React.FC = () => {
   const { user, logout } = useAuth();
@@ -35,6 +37,8 @@ export const Dashboard: React.FC = () => {
     { id: 'habits' as Tab, label: 'Daily Habits', icon: Heart },
     { id: 'templates' as Tab, label: 'Task Templates', icon: Copy },
     { id: 'recurring' as Tab, label: 'Recurring Rules', icon: Repeat },
+    { id: 'boardroom' as Tab, label: 'AI Boardroom', icon: Users },
+    { id: 'copilot-config' as Tab, label: 'AI Co-pilot', icon: Cpu },
     { id: 'analytics' as Tab, label: 'Analytics', icon: BarChart3 },
     { id: 'insights' as Tab, label: 'Agent Memory', icon: Sparkles },
     { id: 'ai-tools' as Tab, label: 'AI Tools', icon: Brain },
@@ -63,6 +67,10 @@ export const Dashboard: React.FC = () => {
         return <AIToolsView />;
       case 'weekly-review':
         return <WeeklyReviewView />;
+      case 'boardroom':
+        return <VirtualBoardroom />;
+      case 'copilot-config':
+        return <CoPilotDashboard />;
     }
   };
 
