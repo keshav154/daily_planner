@@ -19,6 +19,7 @@ interface Habit {
 export const HabitTrackerView: React.FC = () => {
   const [habits, setHabits] = useState<Habit[]>([]);
   const [loading, setLoading] = useState(true);
+  const [coaching, setCoaching] = useState<any[]>([]);
 
   // Form states
   const [title, setTitle] = useState('');
@@ -39,6 +40,13 @@ export const HabitTrackerView: React.FC = () => {
       console.error('Failed to fetch habits:', err);
     } finally {
       setLoading(false);
+    }
+
+    try {
+      const coachingRes = await api.get('/ai/habit-coaching');
+      setCoaching(coachingRes.data || []);
+    } catch (err) {
+      console.error('Failed to fetch habit coaching:', err);
     }
   };
 
@@ -284,6 +292,22 @@ export const HabitTrackerView: React.FC = () => {
                         </button>
                       </div>
                     </div>
+
+                    {/* Habit Coaching */}
+                    {(() => {
+                      const coachEntry = coaching.find((c: any) => c.habitId === habit._id);
+                      if (!coachEntry) return null;
+                      return (
+                        <div className="mt-3 px-3 py-2.5 rounded-lg bg-indigo-950/30 border border-indigo-500/15">
+                          {coachEntry.message && (
+                            <p className="text-[11px] text-indigo-300 font-medium leading-relaxed">{coachEntry.message}</p>
+                          )}
+                          {coachEntry.tip && (
+                            <p className="text-[10px] text-indigo-400/70 mt-1 font-semibold">💡 {coachEntry.tip}</p>
+                          )}
+                        </div>
+                      );
+                    })()}
                   </div>
                 );
               })}

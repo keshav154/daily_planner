@@ -9,6 +9,7 @@ import { motion } from 'framer-motion';
 import { TimeBlockingGrid } from './TimeBlockingGrid';
 import { PomodoroTimer } from './PomodoroTimer';
 import { DailyBriefingCard } from './DailyBriefingCard';
+import { SmartSchedulePanel } from './SmartSchedulePanel';
 
 interface Task {
   _id: string;
@@ -56,6 +57,8 @@ export const TodayView: React.FC = () => {
   const [nlpParsing, setNlpParsing] = useState(false);
   const [planRunning, setPlanRunning] = useState(false);
   const [listening, setListening] = useState(false);
+  const [rescheduleResult, setRescheduleResult] = useState<any>(null);
+  const [reschedulingTaskId, setReschedulingTaskId] = useState<string | null>(null);
 
   const startVoiceInput = () => {
     const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
@@ -226,6 +229,45 @@ export const TodayView: React.FC = () => {
     } catch (err: any) {
       console.error('Failed to complete task:', err);
       alert('Failed to log task completion: ' + (err.response?.data?.error || err.message));
+    }
+  };
+
+  // Apply AI-suggested schedule order
+  const handleApplySchedule = async (orderedIds: string[]) => {
+    try {
+      await api.post('/tasks/reorder', {
+        orders: orderedIds.map((id, idx) => ({ id, order: idx }))
+      });
+      fetchTodayData();
+    } catch (err: any) {
+      console.error('Failed to apply schedule:', err);
+      alert('Failed to apply schedule: ' + (err.response?.data?.error || err.message));
+    }
+  };
+
+  // Smart reschedule a single overdue task
+  const handleSmartReschedule = async (taskId: string) => {
+    setReschedulingTaskId(taskId);
+    try {
+      const res = await api.post('/ai/smart-reschedule', { taskId });
+      setRescheduleResult({ ...res.data, taskId });
+    } catch (err: any) {
+      alert('Failed to get reschedule suggestion: ' + (err.response?.data?.error || err.message));
+      setReschedulingTaskId(null);
+    }
+  };
+
+  const handleAcceptReschedule = async () => {
+    if (!rescheduleResult) return;
+    try {
+      await api.put(`/tasks/${rescheduleResult.taskId}`, {
+        dueDate: rescheduleResult.suggestedDate || rescheduleResult.newDueDate,
+      });
+      setRescheduleResult(null);
+      setReschedulingTaskId(null);
+      fetchTodayData();
+    } catch (err: any) {
+      alert('Failed to accept reschedule: ' + (err.response?.data?.error || err.message));
     }
   };
 
@@ -445,6 +487,10 @@ export const TodayView: React.FC = () => {
                 </div>
               ) : (
                 <div className="divide-y divide-white/5">
+                  {/* Smart Schedule Panel */}
+                  <div className="pb-3 mb-1">
+                    <SmartSchedulePanel tasks={tasks} onApplySchedule={handleApplySchedule} />
+                  </div>
                   {tasks.map((task, index) => (
                     <motion.div
                       key={task._id}
@@ -515,6 +561,21 @@ export const TodayView: React.FC = () => {
                                 <span className="text-[10px] text-indigo-400 bg-indigo-950/20 px-2 py-0.5 rounded border border-indigo-500/10 flex items-center gap-1 font-semibold">
                                   <Clock className="w-3.5 h-3.5 text-neutral-500" /> {task.timeBlock.startTime} - {task.timeBlock.endTime}
                                 </span>
+                              )}
+                              {/* Overdue Smart Reschedule chip */}
+                              {task.dueDate && new Date(task.dueDate) < new Date(selectedDate) && task.status !== 'done' && (
+                                <button
+                                  type="button"
+                                  onClick={() => handleSmartReschedule(task._id)}
+                                  disabled={reschedulingTaskId === task._id}
+                                  className="text-[10px] text-amber-400 bg-amber-950/20 px-2 py-0.5 rounded border border-amber-500/20 flex items-center gap-1 font-semibold cursor-pointer hover:bg-amber-500/10 transition-colors disabled:opacity-50"
+                                >
+                                  {reschedulingTaskId === task._id ? (
+                                    <span className="animate-pulse">Rescheduling...</span>
+                                  ) : (
+                                    <><Sparkles className="w-2.5 h-2.5" /> Smart Reschedule</>
+                                  )}
+                                </button>
                               )}
                             </div>
                           </div>
@@ -859,6 +920,60 @@ export const TodayView: React.FC = () => {
                 className="px-4 py-2 bg-emerald-600 hover:bg-emerald-500 text-white font-semibold text-sm rounded-lg cursor-pointer transition-colors"
               >
                 Log & Complete
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Smart Reschedule Result Modal */}
+      {rescheduleResult && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
+          <div className="w-full max-w-md glass-panel rounded-xl p-6 shadow-2xl space-y-5 border border-amber-500/20">
+            <div className="flex items-center justify-between border-b border-white/5 pb-3">
+              <div className="flex items-center gap-2">
+                <Sparkles className="w-5 h-5 text-amber-400" />
+                <h3 className="text-lg font-bold text-neutral-100">Smart Reschedule</h3>
+              </div>
+              <button
+                onClick={() => { setRescheduleResult(null); setReschedulingTaskId(null); }}
+                className="text-neutral-400 hover:text-neutral-200 cursor-pointer"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="space-y-3">
+              {rescheduleResult.recommendation && (
+                <div className="p-4 bg-amber-950/20 border border-amber-500/15 rounded-lg">
+                  <p className="text-xs font-bold text-amber-400 uppercase tracking-wider mb-1.5">AI Recommendation</p>
+                  <p className="text-sm text-amber-200/80 leading-relaxed">{rescheduleResult.recommendation}</p>
+                </div>
+              )}
+              {(rescheduleResult.suggestedDate || rescheduleResult.newDueDate) && (
+                <div className="flex items-center gap-2 text-sm">
+                  <span className="text-neutral-400">Suggested new date:</span>
+                  <span className="font-bold text-indigo-300">
+                    {new Date(rescheduleResult.suggestedDate || rescheduleResult.newDueDate).toLocaleDateString('en-US', {
+                      weekday: 'short', month: 'short', day: 'numeric'
+                    })}
+                  </span>
+                </div>
+              )}
+            </div>
+
+            <div className="flex items-center justify-end gap-3 pt-3 border-t border-white/5">
+              <button
+                onClick={() => { setRescheduleResult(null); setReschedulingTaskId(null); }}
+                className="px-4 py-2 bg-neutral-800 hover:bg-neutral-700 text-neutral-400 font-semibold text-sm rounded-lg cursor-pointer transition-colors"
+              >
+                Dismiss
+              </button>
+              <button
+                onClick={handleAcceptReschedule}
+                className="px-4 py-2 bg-amber-600 hover:bg-amber-500 text-white font-semibold text-sm rounded-lg cursor-pointer transition-colors"
+              >
+                Accept & Reschedule
               </button>
             </div>
           </div>

@@ -12,6 +12,7 @@ import habitRoutes from './routes/habits';
 import templateRoutes from './routes/templates';
 import briefingRoutes from './routes/briefing';
 import exportRoutes from './routes/exportRoutes';
+import aiRoutes from './routes/aiRoutes';
 import { authenticateToken } from './middleware/auth';
 
 // Load environment variables
@@ -46,6 +47,7 @@ app.use('/api/habits', authenticateToken, habitRoutes);
 app.use('/api/templates', authenticateToken, templateRoutes);
 app.use('/api/briefing', authenticateToken, briefingRoutes);
 app.use('/api/export', authenticateToken, exportRoutes);
+app.use('/api/ai', authenticateToken, aiRoutes);
 
 // Global Error Handler
 app.use((err: any, req: express.Request, res: express.Response, next: express.NextFunction) => {

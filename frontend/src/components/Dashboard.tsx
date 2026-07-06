@@ -4,9 +4,12 @@ import { TodayView } from './TodayView';
 import { LogsView } from './LogsView';
 import { AnalyticsView } from './AnalyticsView';
 import { AgentMemoryView } from './AgentMemoryView';
+import { AIToolsView } from './AIToolsView';
+import { WeeklyReviewView } from './WeeklyReviewView';
+import { BurnoutAlert } from './BurnoutAlert';
 import { 
   Sparkles, Calendar, BookOpen, BarChart3, LogOut, User, Menu, X, 
-  CalendarDays, Heart, Copy, Repeat, Sun, Moon
+  CalendarDays, Heart, Copy, Repeat, Sun, Moon, Brain, BarChart2
 } from 'lucide-react';
 import { AgentChatPanel } from './AgentChatPanel';
 import { WeeklyCalendarView } from './WeeklyCalendarView';
@@ -16,7 +19,7 @@ import { RecurringEventsManager } from './RecurringEventsManager';
 import { XPProgressBar } from './XPProgressBar';
 import { useTheme } from '../context/ThemeContext';
 
-type Tab = 'today' | 'logs' | 'analytics' | 'insights' | 'schedule' | 'habits' | 'templates' | 'recurring';
+type Tab = 'today' | 'logs' | 'analytics' | 'insights' | 'schedule' | 'habits' | 'templates' | 'recurring' | 'ai-tools' | 'weekly-review';
 
 export const Dashboard: React.FC = () => {
   const { user, logout } = useAuth();
@@ -34,6 +37,8 @@ export const Dashboard: React.FC = () => {
     { id: 'recurring' as Tab, label: 'Recurring Rules', icon: Repeat },
     { id: 'analytics' as Tab, label: 'Analytics', icon: BarChart3 },
     { id: 'insights' as Tab, label: 'Agent Memory', icon: Sparkles },
+    { id: 'ai-tools' as Tab, label: 'AI Tools', icon: Brain },
+    { id: 'weekly-review' as Tab, label: 'Weekly Review', icon: BarChart2 },
   ];
 
   const renderActiveView = () => {
@@ -54,6 +59,10 @@ export const Dashboard: React.FC = () => {
         return <TaskTemplatesView />;
       case 'recurring':
         return <RecurringEventsManager />;
+      case 'ai-tools':
+        return <AIToolsView />;
+      case 'weekly-review':
+        return <WeeklyReviewView />;
     }
   };
 
@@ -114,6 +123,9 @@ export const Dashboard: React.FC = () => {
             );
           })}
         </nav>
+
+        {/* Burnout Alert */}
+        <BurnoutAlert />
 
         {/* XP Progress Bar */}
         <XPProgressBar />
