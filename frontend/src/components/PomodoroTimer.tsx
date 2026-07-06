@@ -12,7 +12,8 @@ interface PomodoroTimerProps {
   onTimerComplete: (task: Task, durationMinutes: number) => void;
 }
 
-type SoundType = 'off' | 'white' | 'rain' | 'ocean';
+type SoundType = 'off' | 'white' | 'rain' | 'ocean' | 'campfire' | 'forest' | 'binaural';
+const AVAILABLE_SOUNDS: SoundType[] = ['off', 'white', 'rain', 'ocean', 'campfire', 'forest', 'binaural'];
 
 export const PomodoroTimer: React.FC<PomodoroTimerProps> = ({ tasks, onTimerComplete }) => {
   const [activeTaskId, setActiveTaskId] = useState('');
@@ -82,12 +83,15 @@ export const PomodoroTimer: React.FC<PomodoroTimerProps> = ({ tasks, onTimerComp
   }, [focusMode, isRunning]);
 
   const timerIntervalRef = useRef<any>(null);
+  const endTimeRef = useRef<number | null>(null);
   
   // Web Audio Context references for ambient sound synthesis
   const audioCtxRef = useRef<AudioContext | null>(null);
   const noiseSourceRef = useRef<AudioBufferSourceNode | null>(null);
   const gainNodeRef = useRef<GainNode | null>(null);
   const lfoRef = useRef<OscillatorNode | null>(null);
+  const binauralOscLRef = useRef<OscillatorNode | null>(null);
+  const binauralOscRRef = useRef<OscillatorNode | null>(null);
 
   // Filter tasks to show only pending ones
   const activeTasks = tasks.filter(t => t.status !== 'done');
@@ -103,23 +107,74 @@ export const PomodoroTimer: React.FC<PomodoroTimerProps> = ({ tasks, onTimerComp
 
   useEffect(() => {
     if (isRunning) {
+      // Record the absolute end timestamp
+      endTimeRef.current = Date.now() + (timeLeft * 1000);
+
       timerIntervalRef.current = setInterval(() => {
-        setTimeLeft((prev) => {
-          if (prev <= 1) {
+        if (endTimeRef.current) {
+          const remaining = Math.max(0, Math.ceil((endTimeRef.current - Date.now()) / 1000));
+          setTimeLeft(remaining);
+          if (remaining <= 0) {
             handleComplete();
-            return 0;
           }
-          return prev - 1;
-        });
-      }, 1000);
+        }
+      }, 200); // Check 5 times per second to guarantee high responsiveness
     } else {
       if (timerIntervalRef.current) clearInterval(timerIntervalRef.current);
+      endTimeRef.current = null;
     }
 
     return () => {
       if (timerIntervalRef.current) clearInterval(timerIntervalRef.current);
     };
   }, [isRunning]);
+
+  // Synchronize timer and resume AudioContext immediately on wake-up or focus
+  useEffect(() => {
+    const handleWakeUp = () => {
+      if (isRunning && endTimeRef.current) {
+        const remaining = Math.max(0, Math.ceil((endTimeRef.current - Date.now()) / 1000));
+        setTimeLeft(remaining);
+        if (remaining <= 0) {
+          handleComplete();
+        }
+      }
+      
+      // Auto-resume audio contexts suspended by iOS background policies
+      if (audioCtxRef.current && audioCtxRef.current.state === 'suspended') {
+        audioCtxRef.current.resume().catch((err) => console.warn('AudioContext resume failed:', err));
+      }
+    };
+
+    window.addEventListener('visibilitychange', handleWakeUp);
+    window.addEventListener('focus', handleWakeUp);
+    
+    return () => {
+      window.removeEventListener('visibilitychange', handleWakeUp);
+      window.removeEventListener('focus', handleWakeUp);
+    };
+  }, [isRunning]);
+
+  // Sync native iOS lock screen media controls
+  useEffect(() => {
+    if ('mediaSession' in navigator && isRunning) {
+      const activeTask = tasks.find(t => t._id === activeTaskId);
+      navigator.mediaSession.metadata = new MediaMetadata({
+        title: activeTask ? activeTask.title : 'General Focus Session',
+        artist: 'Kortex by Keshav',
+        album: 'Focus Pomodoro Tracker'
+      });
+      navigator.mediaSession.setActionHandler('play', () => setIsRunning(true));
+      navigator.mediaSession.setActionHandler('pause', () => setIsRunning(false));
+    }
+  }, [isRunning, activeTaskId, tasks]);
+
+  // Request notification permissions
+  useEffect(() => {
+    if ('Notification' in window && Notification.permission === 'default') {
+      Notification.requestPermission();
+    }
+  }, []);
 
   // Handle Audio State triggers on Sound state changes
   useEffect(() => {
@@ -131,10 +186,46 @@ export const PomodoroTimer: React.FC<PomodoroTimerProps> = ({ tasks, onTimerComp
     return () => stopAudio();
   }, [sound, isRunning]);
 
+  const playChime = () => {
+    try {
+      const AudioCtx = window.AudioContext || (window as any).webkitAudioContext;
+      const ctx = new AudioCtx();
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      
+      osc.type = 'sine';
+      osc.frequency.setValueAtTime(830.61, ctx.currentTime); // Ab5
+      osc.frequency.exponentialRampToValueAtTime(659.25, ctx.currentTime + 1.2); // E5
+      
+      gain.gain.setValueAtTime(0.4, ctx.currentTime);
+      gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 1.5);
+      
+      osc.connect(gain);
+      gain.connect(ctx.destination);
+      
+      osc.start();
+      osc.stop(ctx.currentTime + 1.5);
+    } catch (err) {
+      console.warn('Failed to play completion chime:', err);
+    }
+  };
+
   const handleComplete = () => {
     setIsRunning(false);
     stopAudio();
     setSound('off');
+
+    // Play pleasant completion bell chime
+    playChime();
+
+    // Trigger local push notification
+    if ('Notification' in window && Notification.permission === 'granted') {
+      const activeTask = tasks.find(t => t._id === activeTaskId);
+      new Notification('Focus Session Complete! 🎯', {
+        body: activeTask ? `Finished: ${activeTask.title}` : 'Your focus session completed. Time to take a break!',
+        tag: 'kortex-timer-complete'
+      });
+    }
     
     // Find active task
     const task = tasks.find(t => t._id === activeTaskId);
@@ -160,7 +251,7 @@ export const PomodoroTimer: React.FC<PomodoroTimerProps> = ({ tasks, onTimerComp
     setSound('off');
   };
 
-  // --- HTML5 Web Audio Noise Synthesis ---
+  // --- HTML5 Web Audio Ambient Sound Synthesis ---
   const startAudio = () => {
     stopAudio(); // Ensure clean start
 
@@ -172,59 +263,108 @@ export const PomodoroTimer: React.FC<PomodoroTimerProps> = ({ tasks, onTimerComp
 
       // 2. Create Gain node (volume)
       const gainNode = audioCtx.createGain();
-      gainNode.gain.setValueAtTime(0.08, audioCtx.currentTime); // keep volume low/ambient
+      const defaultVol = sound === 'binaural' ? 0.04 : 0.08;
+      gainNode.gain.setValueAtTime(defaultVol, audioCtx.currentTime); // keep volume low/ambient
       gainNodeRef.current = gainNode;
 
-      // 3. Create Audio buffer for noise
-      const bufferSize = 2 * audioCtx.sampleRate;
-      const noiseBuffer = audioCtx.createBuffer(1, bufferSize, audioCtx.sampleRate);
-      const output = noiseBuffer.getChannelData(0);
+      if (sound === 'binaural') {
+        // Binaural Beats: 200Hz Left, 210Hz Right -> 10Hz Alpha Focus frequency
+        const oscL = audioCtx.createOscillator();
+        oscL.type = 'sine';
+        oscL.frequency.setValueAtTime(200, audioCtx.currentTime);
 
-      // 4. Fill buffer depending on noise type
-      if (sound === 'white') {
-        // Pure random values (white noise)
-        for (let i = 0; i < bufferSize; i++) {
-          output[i] = Math.random() * 2 - 1;
+        const oscR = audioCtx.createOscillator();
+        oscR.type = 'sine';
+        oscR.frequency.setValueAtTime(210, audioCtx.currentTime);
+
+        const pannerL = audioCtx.createStereoPanner();
+        pannerL.pan.setValueAtTime(-1, audioCtx.currentTime);
+
+        const pannerR = audioCtx.createStereoPanner();
+        pannerR.pan.setValueAtTime(1, audioCtx.currentTime);
+
+        oscL.connect(pannerL);
+        pannerL.connect(gainNode);
+
+        oscR.connect(pannerR);
+        pannerR.connect(gainNode);
+
+        oscL.start();
+        oscR.start();
+
+        binauralOscLRef.current = oscL;
+        binauralOscRRef.current = oscR;
+
+        gainNode.connect(audioCtx.destination);
+      } else {
+        // Create Audio buffer for noise
+        const bufferSize = 2 * audioCtx.sampleRate;
+        const noiseBuffer = audioCtx.createBuffer(1, bufferSize, audioCtx.sampleRate);
+        const output = noiseBuffer.getChannelData(0);
+
+        if (sound === 'white') {
+          // Pure random values (white noise)
+          for (let i = 0; i < bufferSize; i++) {
+            output[i] = Math.random() * 2 - 1;
+          }
+        } else if (sound === 'rain' || sound === 'ocean') {
+          // Brownian noise (Rain rumble/ocean wash)
+          let lastOut = 0.0;
+          for (let i = 0; i < bufferSize; i++) {
+            const white = Math.random() * 2 - 1;
+            output[i] = (lastOut + (0.02 * white)) / 1.02;
+            lastOut = output[i];
+            output[i] *= 3.5;
+          }
+        } else if (sound === 'campfire') {
+          // Brownian fireplace rumble + randomized wood ember pops
+          let lastOut = 0.0;
+          for (let i = 0; i < bufferSize; i++) {
+            const white = Math.random() * 2 - 1;
+            const brown = (lastOut + (0.02 * white)) / 1.02;
+            lastOut = brown;
+
+            let crackle = 0.0;
+            if (Math.random() < 0.00018) {
+              crackle = (Math.random() * 2 - 1) * 0.7; // sharp fire snap
+            }
+            output[i] = (brown * 1.8) + crackle;
+          }
+        } else if (sound === 'forest') {
+          // Soft pink noise for wind rustling leaves
+          let lastOut = 0.0;
+          for (let i = 0; i < bufferSize; i++) {
+            const white = Math.random() * 2 - 1;
+            const pink = (lastOut + (0.05 * white)) / 1.05;
+            lastOut = pink;
+            output[i] = pink * 2.2;
+          }
         }
-      } else if (sound === 'rain' || sound === 'ocean') {
-        // Brownian noise (Rain rumble/ocean wash)
-        // Accumulated values create low-pass filtering effect natively
-        let lastOut = 0.0;
-        for (let i = 0; i < bufferSize; i++) {
-          const white = Math.random() * 2 - 1;
-          output[i] = (lastOut + (0.02 * white)) / 1.02;
-          lastOut = output[i];
-          output[i] *= 3.5; // Compensate for volume loss
+
+        const noiseSource = audioCtx.createBufferSource();
+        noiseSource.buffer = noiseBuffer;
+        noiseSource.loop = true;
+        noiseSourceRef.current = noiseSource;
+
+        if (sound === 'ocean' || sound === 'forest') {
+          // Ambient swells: modulate gain volume with slow LFO oscillations
+          const lfo = audioCtx.createOscillator();
+          lfo.type = 'sine';
+          lfo.frequency.setValueAtTime(sound === 'ocean' ? 0.08 : 0.03, audioCtx.currentTime); // Ocean 12s, Forest Wind 33s
+
+          const lfoGain = audioCtx.createGain();
+          lfoGain.gain.setValueAtTime(0.04, audioCtx.currentTime);
+
+          lfo.connect(lfoGain);
+          lfoGain.connect(gainNode.gain);
+          lfo.start();
+          lfoRef.current = lfo;
         }
+
+        noiseSource.connect(gainNode);
+        gainNode.connect(audioCtx.destination);
+        noiseSource.start();
       }
-
-      // 5. Create buffer source
-      const noiseSource = audioCtx.createBufferSource();
-      noiseSource.buffer = noiseBuffer;
-      noiseSource.loop = true;
-      noiseSourceRef.current = noiseSource;
-
-      // 6. Hook up nodes
-      if (sound === 'ocean') {
-        // Ocean Wave simulation: modulate gain node volume with a Slow LFO (0.08 Hz)
-        const lfo = audioCtx.createOscillator();
-        lfo.type = 'sine';
-        lfo.frequency.setValueAtTime(0.08, audioCtx.currentTime); // ~12 second waves cycle
-
-        const lfoGain = audioCtx.createGain();
-        lfoGain.gain.setValueAtTime(0.06, audioCtx.currentTime);
-
-        // Connect LFO modulation to gain node volume parameter
-        lfo.connect(lfoGain);
-        lfoGain.connect(gainNode.gain);
-        lfo.start();
-        lfoRef.current = lfo;
-      }
-
-      // Connect noise -> gain -> destination
-      noiseSource.connect(gainNode);
-      gainNode.connect(audioCtx.destination);
-      noiseSource.start();
     } catch (e) {
       console.error('Failed to start synthesis engine:', e);
     }
@@ -240,6 +380,14 @@ export const PomodoroTimer: React.FC<PomodoroTimerProps> = ({ tasks, onTimerComp
         lfoRef.current.stop();
         lfoRef.current.disconnect();
       }
+      if (binauralOscLRef.current) {
+        try { binauralOscLRef.current.stop(); } catch (e) {}
+        binauralOscLRef.current.disconnect();
+      }
+      if (binauralOscRRef.current) {
+        try { binauralOscRRef.current.stop(); } catch (e) {}
+        binauralOscRRef.current.disconnect();
+      }
       if (gainNodeRef.current) {
         gainNodeRef.current.disconnect();
       }
@@ -251,6 +399,8 @@ export const PomodoroTimer: React.FC<PomodoroTimerProps> = ({ tasks, onTimerComp
     }
     noiseSourceRef.current = null;
     lfoRef.current = null;
+    binauralOscLRef.current = null;
+    binauralOscRRef.current = null;
     gainNodeRef.current = null;
     audioCtxRef.current = null;
   };
@@ -325,7 +475,7 @@ export const PomodoroTimer: React.FC<PomodoroTimerProps> = ({ tasks, onTimerComp
           <Volume2 className="w-3.5 h-3.5 text-neutral-500" /> Sound:
         </span>
         <div className="flex gap-1.5">
-          {(['off', 'white', 'rain', 'ocean'] as SoundType[]).map((s) => (
+          {AVAILABLE_SOUNDS.map((s) => (
             <button
               key={s}
               onClick={() => setSound(s)}
@@ -404,7 +554,7 @@ export const PomodoroTimer: React.FC<PomodoroTimerProps> = ({ tasks, onTimerComp
           <div className="flex items-center gap-3 bg-neutral-900/60 p-3 rounded-2xl border border-white/5 mb-8">
             <span className="text-[10px] text-neutral-500 font-bold uppercase tracking-wider">Ambient:</span>
             <div className="flex gap-1.5">
-              {(['off', 'white', 'rain', 'ocean'] as SoundType[]).map((s) => (
+              {AVAILABLE_SOUNDS.map((s) => (
                 <button
                   key={s}
                   onClick={() => setSound(s)}

@@ -32,6 +32,13 @@ interface DayData {
   recurring: RecurringInstance[];
 }
 
+const formatDateLocal = (date: Date): string => {
+  const yyyy = date.getFullYear();
+  const mm = String(date.getMonth() + 1).padStart(2, '0');
+  const dd = String(date.getDate()).padStart(2, '0');
+  return `${yyyy}-${mm}-${dd}`;
+};
+
 export const WeeklyCalendarView: React.FC = () => {
   const [currentWeekStart, setCurrentWeekStart] = useState<Date>(() => {
     const today = new Date();
@@ -69,7 +76,7 @@ export const WeeklyCalendarView: React.FC = () => {
     for (let i = 0; i < 7; i++) {
       const d = new Date(currentWeekStart);
       d.setDate(d.getDate() + i);
-      const dateStr = d.toISOString().split('T')[0];
+      const dateStr = formatDateLocal(d);
 
       days.push({
         date: d,

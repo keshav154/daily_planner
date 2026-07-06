@@ -93,7 +93,10 @@ export const TodayView: React.FC = () => {
   // Date selection
   const [selectedDate, setSelectedDate] = useState(() => {
     const today = new Date();
-    return today.toISOString().split('T')[0];
+    const yyyy = today.getFullYear();
+    const mm = String(today.getMonth() + 1).padStart(2, '0');
+    const dd = String(today.getDate()).padStart(2, '0');
+    return `${yyyy}-${mm}-${dd}`;
   });
 
   const fetchTodayData = async () => {
@@ -188,8 +191,9 @@ export const TodayView: React.FC = () => {
       try {
         await api.put(`/tasks/${task._id}`, { status: 'todo' });
         fetchTodayData();
-      } catch (err) {
-        console.error(err);
+      } catch (err: any) {
+        console.error('Failed to uncomplete task:', err);
+        alert('Failed to uncomplete task: ' + (err.response?.data?.error || err.message));
       }
     } else {
       // Prompt for duration & notes to log
@@ -207,20 +211,21 @@ export const TodayView: React.FC = () => {
       await api.post('/logs', {
         taskId: completingTask._id,
         title: `Completed: ${completingTask.title}`,
-        duration: completionDuration,
+        duration: Number(completionDuration),
         notes: completionNotes
       });
 
       // 2. Mark task status as done
       await api.put(`/tasks/${completingTask._id}`, {
         status: 'done',
-        actualTime: completionDuration
+        actualTime: Number(completionDuration)
       });
 
       setCompletingTask(null);
       fetchTodayData();
-    } catch (err) {
-      console.error(err);
+    } catch (err: any) {
+      console.error('Failed to complete task:', err);
+      alert('Failed to log task completion: ' + (err.response?.data?.error || err.message));
     }
   };
 
