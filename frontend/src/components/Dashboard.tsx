@@ -77,7 +77,7 @@ export const Dashboard: React.FC = () => {
             <div className="w-8 h-8 rounded-lg bg-indigo-600 flex items-center justify-center text-white shadow-md shadow-indigo-600/30">
               <Sparkles className="w-4 h-4" />
             </div>
-            <span className="font-extrabold font-sans text-base tracking-tight bg-gradient-to-r from-neutral-100 to-neutral-400 bg-clip-text text-transparent">
+            <span className="font-extrabold font-sans text-base tracking-tight text-gradient">
               Kortex by Keshav
             </span>
           </div>

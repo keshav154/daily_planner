@@ -12,6 +12,15 @@
   body {
     @apply bg-neutral-950 text-neutral-50 antialiased selection:bg-indigo-500/30 selection:text-indigo-200;
     font-family: var(--font-sans);
+    background-image: 
+      radial-gradient(at 5% 5%, rgba(99, 102, 241, 0.08) 0px, transparent 45%),
+      radial-gradient(at 95% 95%, rgba(139, 92, 246, 0.08) 0px, transparent 45%),
+      radial-gradient(at 50% 50%, rgba(168, 85, 247, 0.02) 0px, transparent 60%);
+    background-attachment: fixed;
+  }
+
+  button, select, input, textarea {
+    transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
   }
 }
 
@@ -24,31 +33,50 @@
   background: transparent;
 }
 ::-webkit-scrollbar-thumb {
-  background: rgba(255, 255, 255, 0.15);
+  background: rgba(255, 255, 255, 0.12);
   border-radius: 9999px;
 }
 ::-webkit-scrollbar-thumb:hover {
-  background: rgba(255, 255, 255, 0.25);
+  background: rgba(255, 255, 255, 0.22);
 }
 
 /* Premium glassmorphism utility classes */
 .glass-panel {
-  background: rgba(23, 23, 23, 0.6);
-  backdrop-filter: blur(12px);
-  -webkit-backdrop-filter: blur(12px);
-  border: 1px solid rgba(255, 255, 255, 0.05);
+  background: rgba(20, 20, 20, 0.55);
+  backdrop-filter: blur(18px);
+  -webkit-backdrop-filter: blur(18px);
+  border: 1px solid rgba(255, 255, 255, 0.045);
+  box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.3);
+  transition: border-color 0.25s ease, box-shadow 0.25s ease;
+}
+
+.glass-panel:hover {
+  border-color: rgba(255, 255, 255, 0.08);
 }
 
 .glass-input {
-  background: rgba(10, 10, 10, 0.4);
-  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: rgba(8, 8, 8, 0.45);
+  border: 1px solid rgba(255, 255, 255, 0.06);
   transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
 .glass-input:focus {
-  border-color: rgba(99, 102, 241, 0.6);
-  box-shadow: 0 0 12px rgba(99, 102, 241, 0.15);
+  border-color: rgba(99, 102, 241, 0.5);
+  box-shadow: 0 0 16px rgba(99, 102, 241, 0.12);
   outline: none;
+}
+
+/* Elegant Text Gradients */
+.text-gradient {
+  background: linear-gradient(135deg, #c7d2fe 0%, #e9d5ff 50%, #a78bfa 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+
+.text-gradient-indigo {
+  background: linear-gradient(135deg, #818cf8 0%, #c084fc 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
 }
 
 /* Light mode overrides */
