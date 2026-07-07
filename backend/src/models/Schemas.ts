@@ -15,6 +15,7 @@ export interface IUser extends Document {
     workingHoursStart: string; // e.g. "09:00"
     workingHoursEnd: string;   // e.g. "17:00"
     peakEnergyTime: 'morning' | 'afternoon' | 'evening' | 'night';
+    workMode: 'office' | 'wfh';
   };
   createdAt: Date;
   updatedAt: Date;
@@ -33,7 +34,8 @@ const UserSchema = new Schema<IUser>({
   preferences: {
     workingHoursStart: { type: String, default: '09:00' },
     workingHoursEnd: { type: String, default: '17:00' },
-    peakEnergyTime: { type: String, enum: ['morning', 'afternoon', 'evening', 'night'], default: 'morning' }
+    peakEnergyTime: { type: String, enum: ['morning', 'afternoon', 'evening', 'night'], default: 'morning' },
+    workMode: { type: String, enum: ['office', 'wfh'], default: 'wfh' }
   }
 }, { timestamps: true });
 

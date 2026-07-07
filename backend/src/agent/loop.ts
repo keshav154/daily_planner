@@ -84,11 +84,17 @@ export const gatherUserContext = async (userId: string, targetDateStr?: string) 
   const totalCount = recentTasks.length;
   const completionRate = totalCount > 0 ? (completedCount / totalCount) * 100 : 0;
 
+  const adjustedPreferences = { 
+    ...user.preferences,
+    workingHoursStart: user.preferences.workMode === 'office' ? '10:30' : '10:00',
+    workingHoursEnd: user.preferences.workMode === 'office' ? '16:30' : '18:00'
+  };
+
   return {
     user: {
       email: user.email,
       timezone: user.timezone,
-      preferences: user.preferences
+      preferences: adjustedPreferences as any
     },
     currentTime: new Date().toISOString(),
     activeTasks,

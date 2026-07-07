@@ -1,9 +1,10 @@
 import React, { useState, useEffect } from 'react';
 import api from '../services/api';
+import { useAuth } from '../context/AuthContext';
 import { 
   Sparkles, Clock, CheckCircle2, Circle, AlertCircle, 
   ChevronUp, ChevronDown, Trash2, Check, X, Tag, CornerDownRight, Zap,
-  ListTodo, CalendarRange, ChevronRight, Mic
+  ListTodo, CalendarRange, ChevronRight, Mic, Briefcase, Home
 } from 'lucide-react';
 import { motion } from 'framer-motion';
 import { TimeBlockingGrid } from './TimeBlockingGrid';
@@ -50,12 +51,34 @@ interface AgentRun {
 }
 
 export const TodayView: React.FC = () => {
+  const { user, updateUser } = useAuth();
   const [tasks, setTasks] = useState<Task[]>([]);
   const [lastRun, setLastRun] = useState<AgentRun | null>(null);
   const [loading, setLoading] = useState(true);
   const [nlpText, setNlpText] = useState('');
   const [nlpParsing, setNlpParsing] = useState(false);
   const [planRunning, setPlanRunning] = useState(false);
+
+  const handleToggleWorkMode = async () => {
+    if (!user) return;
+    const currentMode = user.preferences?.workMode || 'wfh';
+    const newMode = currentMode === 'office' ? 'wfh' : 'office';
+    
+    try {
+      const updatedUserRes = await api.put('/auth/me', {
+        preferences: {
+          ...user.preferences,
+          workMode: newMode
+        }
+      });
+      updateUser(updatedUserRes.data);
+      // Refresh current planner metrics
+      fetchTodayData();
+    } catch (err: any) {
+      console.error('Failed to toggle work location:', err);
+      alert('Failed to update work mode: ' + err.message);
+    }
+  };
   const [listening, setListening] = useState(false);
   const [rescheduleResult, setRescheduleResult] = useState<any>(null);
   const [reschedulingTaskId, setReschedulingTaskId] = useState<string | null>(null);
@@ -400,6 +423,32 @@ export const TodayView: React.FC = () => {
               <CalendarRange className="w-4 h-4" />
             </button>
           </div>
+
+          {/* Work Mode Toggle (Office / WFH) */}
+          {user && (
+            <button
+              type="button"
+              onClick={handleToggleWorkMode}
+              className={`flex items-center gap-1.5 px-3 py-2 rounded-lg border text-xs font-bold uppercase transition-all duration-200 cursor-pointer ${
+                user.preferences?.workMode === 'office'
+                  ? 'bg-indigo-950/20 border-indigo-500/30 text-indigo-400'
+                  : 'bg-neutral-900/60 border-white/5 hover:border-white/10 text-neutral-400'
+              }`}
+              title="Toggle current work environment"
+            >
+              {user.preferences?.workMode === 'office' ? (
+                <>
+                  <Briefcase className="w-3.5 h-3.5 text-indigo-400" />
+                  Office Day
+                </>
+              ) : (
+                <>
+                  <Home className="w-3.5 h-3.5 text-neutral-500" />
+                  WFH Day
+                </>
+              )}
+            </button>
+          )}
 
           <input
             id="date-select"

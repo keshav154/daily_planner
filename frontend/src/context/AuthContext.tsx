@@ -15,6 +15,7 @@ export interface IUser {
     workingHoursStart: string;
     workingHoursEnd: string;
     peakEnergyTime: 'morning' | 'afternoon' | 'evening' | 'night';
+    workMode: 'office' | 'wfh';
   };
 }
 

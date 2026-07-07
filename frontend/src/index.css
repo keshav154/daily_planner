@@ -137,3 +137,27 @@ html.light .bg-neutral-950 {
 html.light .border-white\/5 {
   border-color: rgba(0, 0, 0, 0.08);
 }
+
+/* Mobile Safe Areas */
+.pt-safe {
+  padding-top: env(safe-area-inset-top, 0px);
+}
+.pb-safe {
+  padding-bottom: env(safe-area-inset-bottom, 0px);
+}
+.mt-safe {
+  margin-top: env(safe-area-inset-top, 0px);
+}
+.mb-safe {
+  margin-bottom: env(safe-area-inset-bottom, 0px);
+}
+
+@media (max-width: 768px) {
+  body {
+    font-size: 14px;
+  }
+  /* Optimization for Android touch buttons */
+  button, input, select, textarea {
+    min-height: 38px;
+  }
+}
