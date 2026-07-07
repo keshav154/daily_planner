@@ -4,6 +4,8 @@ import api from '../services/api';
 export interface IUser {
   id: string;
   email: string;
+  name?: string;
+  avatar?: string;
   timezone: string;
   theme?: string;
   xp?: number;
@@ -21,7 +23,7 @@ interface AuthContextType {
   token: string | null;
   loading: boolean;
   login: (email: string, password: string) => Promise<void>;
-  register: (email: string, password: string, timezone?: string) => Promise<void>;
+  register: (email: string, password: string, name?: string, timezone?: string) => Promise<void>;
   logout: () => void;
   updateUser: (updates: Partial<IUser>) => void;
 }
@@ -67,10 +69,10 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   };
 
-  const register = async (email: string, password: string, timezone?: string) => {
+  const register = async (email: string, password: string, name?: string, timezone?: string) => {
     try {
       const tz = timezone || Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC';
-      const response = await api.post('/auth/register', { email, password, timezone: tz });
+      const response = await api.post('/auth/register', { email, password, name, timezone: tz });
       const { token: receivedToken, user: receivedUser } = response.data;
 
       localStorage.setItem('token', receivedToken);

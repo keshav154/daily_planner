@@ -4,6 +4,8 @@ import mongoose, { Schema, Document } from 'mongoose';
 export interface IUser extends Document {
   email: string;
   passwordHash: string;
+  name: string;
+  avatar: string;
   timezone: string;
   theme: string;
   xp: number;
@@ -21,6 +23,8 @@ export interface IUser extends Document {
 const UserSchema = new Schema<IUser>({
   email: { type: String, required: true, unique: true, index: true, lowercase: true, trim: true },
   passwordHash: { type: String, required: true },
+  name: { type: String, default: '' },
+  avatar: { type: String, default: '' },
   timezone: { type: String, default: 'UTC' },
   theme: { type: String, enum: ['dark', 'light'], default: 'dark' },
   xp: { type: Number, default: 0 },
@@ -102,6 +106,16 @@ export interface IAgentMemory extends Document {
   content: string;
   category: string; // e.g. "estimation", "productivity", "scheduling"
   feedback: 'none' | 'accepted' | 'rejected';
+  source: 'reflection' | 'observation' | 'user' | 'autonomous' | 'consolidation';
+  importance: number;
+  accessCount: number;
+  lastAccessedAt: Date;
+  linkedEntities: Array<{
+    entityType: 'task' | 'habit' | 'goal' | 'memory';
+    entityId: mongoose.Types.ObjectId;
+    relationship: string;
+  }>;
+  expiresAt?: Date;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -111,7 +125,17 @@ const AgentMemorySchema = new Schema<IAgentMemory>({
   type: { type: String, enum: ['pattern', 'preference', 'adjustment', 'general'], default: 'pattern' },
   content: { type: String, required: true },
   category: { type: String, default: 'general' },
-  feedback: { type: String, enum: ['none', 'accepted', 'rejected'], default: 'none', index: true }
+  feedback: { type: String, enum: ['none', 'accepted', 'rejected'], default: 'none', index: true },
+  source: { type: String, enum: ['reflection', 'observation', 'user', 'autonomous', 'consolidation'], default: 'reflection' },
+  importance: { type: Number, default: 5, min: 1, max: 10 },
+  accessCount: { type: Number, default: 0 },
+  lastAccessedAt: { type: Date, default: Date.now },
+  linkedEntities: [{
+    entityType: { type: String, enum: ['task', 'habit', 'goal', 'memory'], required: true },
+    entityId: { type: Schema.Types.ObjectId, required: true },
+    relationship: { type: String, default: 'related_to' }
+  }],
+  expiresAt: { type: Date }
 }, { timestamps: true });
 
 // AgentRun Schema

@@ -9,7 +9,7 @@ const router = Router();
 // Register a new user
 router.post('/register', async (req: Request, res: Response) => {
   try {
-    const { email, password, timezone, preferences } = req.body;
+    const { email, password, timezone, preferences, name, avatar } = req.body;
 
     if (!email || !password) {
       return res.status(400).json({ error: 'Email and password are required' });
@@ -26,6 +26,8 @@ router.post('/register', async (req: Request, res: Response) => {
     const user = new User({
       email: email.toLowerCase(),
       passwordHash,
+      name: name || '',
+      avatar: avatar || '',
       timezone: timezone || 'UTC',
       preferences: preferences || {}
     });
@@ -40,6 +42,8 @@ router.post('/register', async (req: Request, res: Response) => {
       user: {
         id: user._id,
         email: user.email,
+        name: user.name,
+        avatar: user.avatar,
         timezone: user.timezone,
         preferences: user.preferences
       }
@@ -77,6 +81,8 @@ router.post('/login', async (req: Request, res: Response) => {
       user: {
         id: user._id,
         email: user.email,
+        name: user.name,
+        avatar: user.avatar,
         timezone: user.timezone,
         preferences: user.preferences
       }
@@ -104,7 +110,7 @@ router.get('/me', authenticateToken, async (req: AuthRequest, res: Response) => 
 // Update user profile (theme, preferences, etc.)
 router.put('/me', authenticateToken, async (req: AuthRequest, res: Response) => {
   try {
-    const { timezone, preferences, theme } = req.body;
+    const { timezone, preferences, theme, name, avatar } = req.body;
     const user = await User.findById(req.userId);
     if (!user) {
       return res.status(404).json({ error: 'User not found' });
@@ -112,6 +118,8 @@ router.put('/me', authenticateToken, async (req: AuthRequest, res: Response) => 
 
     if (timezone) user.timezone = timezone;
     if (theme) user.theme = theme;
+    if (name !== undefined) user.name = name;
+    if (avatar !== undefined) user.avatar = avatar;
     if (preferences) {
       user.preferences = {
         ...user.preferences,

@@ -2,6 +2,7 @@ import { Router, Response } from 'express';
 import mongoose from 'mongoose';
 import { AgentRun, AgentMemory, Task } from '../models/Schemas';
 import Habit from '../models/Habit';
+import { Goal } from '../models/Goal';
 import { authenticateToken, AuthRequest } from '../middleware/auth';
 import { runPlanningLoop, runReflectionLoop, gatherUserContext } from '../agent/loop';
 import { queryNvidiaNim } from '../config/nvidia';
@@ -246,6 +247,8 @@ router.post('/chat', authenticateToken, async (req: AuthRequest, res: Response) 
     }
 
     const context = await gatherUserContext(userId);
+    const activeGoals = await Goal.find({ userId, status: 'active' });
+    const activeHabits = await Habit.find({ userId, isActive: true });
 
     const systemPrompt = `You are Kortex Assistant, custom-built for Keshav. You are a premium AI daily productivity assistant.
 You are having an interactive chat with the user to help them plan, structure, and optimize their schedule.
@@ -257,6 +260,8 @@ Current Context Snapshot:
 - Today's Tasks: ${JSON.stringify(context.activeTasks.map(t => ({ id: t._id, title: t.title, status: t.status, priority: t.priority, estimatedTime: t.estimatedTime, actualTime: t.actualTime })), null, 2)}
 - Today's Work Logs: ${JSON.stringify(context.dailyLogs.map(l => ({ title: l.title, duration: l.duration })), null, 2)}
 - Agent Memories: ${JSON.stringify(context.memories.map(m => m.content), null, 2)}
+- Active Goals: ${JSON.stringify(activeGoals.map(g => ({ id: g._id, title: g.title, progress: g.progress, deadline: g.deadline, milestones: g.milestones.map(m => ({ title: m.title, completed: m.completed })) })), null, 2)}
+- Habits: ${JSON.stringify(activeHabits.map(h => ({ id: h._id, title: h.title, streak: h.currentStreak })), null, 2)}
 
 You can respond with standard suggestions AND also trigger direct tool calls if the user explicitly asks you to create, delete, timeblock, or schedule something.
 Allowed action types in suggestions:
@@ -268,12 +273,14 @@ Allowed action types in suggestions:
 
 Direct Tool Calls allowed in your output:
 {
-  "name": "create_task" | "delete_task" | "add_time_block" | "add_habit",
+  "name": "create_task" | "delete_task" | "add_time_block" | "add_habit" | "create_goal" | "complete_milestone",
   "arguments": {
     // for create_task: { "title": string, "estimatedTime": number }
     // for delete_task: { "taskId": string }
     // for add_time_block: { "taskId": string, "startTime": string, "endTime": string }
     // for add_habit: { "title": string, "frequency": "daily" | "weekdays" | "custom", "icon": string }
+    // for create_goal: { "title": string, "description": string, "deadline": string }
+    // for complete_milestone: { "goalId": string, "milestoneIndex": number }
   }
 }
 
@@ -373,6 +380,42 @@ Format output as raw JSON only. Do not wrap in markdown \`\`\`json block.`;
             toolCallResult = `Successfully added habit: ${args.title}`;
             break;
           }
+          case 'create_goal': {
+            const newGoal = new Goal({
+              userId,
+              title: args.title,
+              description: args.description || '',
+              deadline: args.deadline ? new Date(args.deadline) : undefined,
+              milestones: [
+                { title: 'Define scope and roadmap', completed: false },
+                { title: 'Implement key logic steps', completed: false },
+                { title: 'Validate and review milestones', completed: false }
+              ],
+              status: 'active',
+              agentNotes: ['Goal created autonomously via conversational AI interface.']
+            });
+            await newGoal.save();
+            toolCallResult = `Successfully created goal: ${args.title}`;
+            break;
+          }
+          case 'complete_milestone': {
+            const goal = await Goal.findOne({ _id: args.goalId, userId });
+            if (goal) {
+              const idx = parseInt(args.milestoneIndex, 10);
+              if (!isNaN(idx) && idx >= 0 && idx < goal.milestones.length) {
+                goal.milestones[idx].completed = true;
+                goal.milestones[idx].completedAt = new Date();
+                goal.agentNotes.push(`Milestone index ${idx} completed autonomously via chat tool execution.`);
+                await goal.save();
+                toolCallResult = `Successfully completed milestone "${goal.milestones[idx].title}" for goal "${goal.title}"`;
+              } else {
+                toolCallResult = `Milestone index out of bounds.`;
+              }
+            } else {
+              toolCallResult = `Goal not found.`;
+            }
+            break;
+          }
         }
       } catch (e: any) {
         console.error('Failed to run tool call:', e);
@@ -381,11 +424,17 @@ Format output as raw JSON only. Do not wrap in markdown \`\`\`json block.`;
     }
 
     let runId = null;
+    const chatContextSnapshot = {
+      ...context,
+      goals: activeGoals.map(g => ({ id: g._id.toString(), title: g.title, progress: g.progress })),
+      habits: activeHabits.map(h => ({ id: h._id.toString(), title: h.title, streak: h.currentStreak }))
+    };
+
     if (suggestions.length > 0) {
       const agentRun = new AgentRun({
         userId,
         trigger: 'chat',
-        contextSnapshot: context,
+        contextSnapshot: chatContextSnapshot,
         planOutput: {
           rationale: `Chat: ${message}`,
           suggestions

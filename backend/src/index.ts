@@ -13,6 +13,7 @@ import templateRoutes from './routes/templates';
 import briefingRoutes from './routes/briefing';
 import exportRoutes from './routes/exportRoutes';
 import aiRoutes from './routes/aiRoutes';
+import goalRoutes from './routes/goals';
 import { authenticateToken } from './middleware/auth';
 
 // Load environment variables
@@ -48,6 +49,7 @@ app.use('/api/templates', authenticateToken, templateRoutes);
 app.use('/api/briefing', authenticateToken, briefingRoutes);
 app.use('/api/export', authenticateToken, exportRoutes);
 app.use('/api/ai', authenticateToken, aiRoutes);
+app.use('/api/goals', authenticateToken, goalRoutes);
 
 // Global Error Handler
 app.use((err: any, req: express.Request, res: express.Response, next: express.NextFunction) => {
