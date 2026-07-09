@@ -44,7 +44,7 @@ export const HabitTrackerView: React.FC = () => {
 
     try {
       const coachingRes = await api.get('/ai/habit-coaching');
-      setCoaching(coachingRes.data || []);
+      setCoaching(coachingRes.data?.coaching || []);
     } catch (err) {
       console.error('Failed to fetch habit coaching:', err);
     }
@@ -217,79 +217,81 @@ export const HabitTrackerView: React.FC = () => {
                 return (
                   <div 
                     key={habit._id}
-                    className="glass-panel rounded-xl p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-4 border border-white/5 hover:border-white/10 transition-all shadow-sm"
+                    className="glass-panel rounded-xl p-4 flex flex-col border border-white/5 hover:border-white/10 transition-all shadow-sm"
                   >
-                    <div className="flex items-center gap-3.5 min-w-0">
-                      {/* Completion check toggle */}
-                      <button
-                        onClick={() => handleToggleHabit(habit._id)}
-                        className="text-neutral-400 hover:text-indigo-400 transition-colors cursor-pointer shrink-0"
-                      >
-                        {doneToday ? (
-                          <CheckCircle2 className="w-6 h-6 text-indigo-500" />
-                        ) : (
-                          <Circle className="w-6 h-6" />
-                        )}
-                      </button>
-
-                      {/* Icon emoji and text */}
-                      <div className="min-w-0">
-                        <div className="flex items-center gap-2">
-                          <span className="text-lg shrink-0 select-none">{habit.icon}</span>
-                          <h4 className={`text-sm font-bold truncate ${
-                            doneToday ? 'line-through text-neutral-500' : 'text-neutral-200'
-                          }`}>
-                            {habit.title}
-                          </h4>
-                        </div>
-                        <p className="text-[10px] text-neutral-500 font-semibold uppercase mt-0.5">{habit.frequency} Frequency</p>
-                      </div>
-                    </div>
-
-                    <div className="flex items-center justify-between sm:justify-end gap-6 shrink-0">
-                      {/* Streaks progress timeline */}
-                      <div className="flex flex-col items-end gap-1 select-none">
-                        <div className="flex gap-1">
-                          {past7Days.map((dateStr) => {
-                            const completed = habit.completions.some(c => c.date === dateStr && c.completed);
-                            const label = new Date(dateStr).toLocaleDateString(undefined, { weekday: 'short' })[0];
-                            return (
-                              <div
-                                key={dateStr}
-                                className={`w-4 h-4 rounded-full flex items-center justify-center text-[7px] font-black border ${
-                                  completed 
-                                    ? 'bg-indigo-600/80 border-indigo-500 text-white' 
-                                    : 'bg-neutral-900 border-white/5 text-neutral-500'
-                                }`}
-                                title={`${dateStr}: ${completed ? 'Done' : 'Missed'}`}
-                              >
-                                {label}
-                              </div>
-                            );
-                          })}
-                        </div>
-                        <span className="text-[8px] text-neutral-500 font-bold uppercase tracking-wider">Past 7 Days</span>
-                      </div>
-
-                      {/* Flame Streaks */}
-                      <div className="flex items-center gap-1.5 border-l border-white/5 pl-4 shrink-0">
-                        <div className="text-center">
-                          <div className="flex items-center gap-0.5 justify-center">
-                            <Flame className={`w-4.5 h-4.5 ${
-                              habit.currentStreak > 0 ? 'text-orange-400 fill-orange-500/10' : 'text-neutral-600'
-                            }`} />
-                            <span className="text-sm font-black text-neutral-200">{habit.currentStreak}</span>
-                          </div>
-                          <span className="text-[8px] text-neutral-500 font-bold uppercase tracking-wider">Streak</span>
-                        </div>
-                        
+                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                      <div className="flex items-center gap-3.5 min-w-0">
+                        {/* Completion check toggle */}
                         <button
-                          onClick={() => handleDeleteHabit(habit._id)}
-                          className="text-neutral-600 hover:text-red-400 p-1.5 rounded-lg cursor-pointer hover:bg-neutral-800 transition-colors ml-2"
-                          title="Delete habit"
+                          onClick={() => handleToggleHabit(habit._id)}
+                          className="text-neutral-400 hover:text-indigo-400 transition-colors cursor-pointer shrink-0"
                         >
-                          <Trash2 className="w-3.5 h-3.5" />
+                          {doneToday ? (
+                            <CheckCircle2 className="w-6 h-6 text-indigo-500" />
+                          ) : (
+                            <Circle className="w-6 h-6" />
+                          )}
                         </button>
+
+                        {/* Icon emoji and text */}
+                        <div className="min-w-0">
+                          <div className="flex items-center gap-2">
+                            <span className="text-lg shrink-0 select-none">{habit.icon}</span>
+                            <h4 className={`text-sm font-bold truncate ${
+                              doneToday ? 'line-through text-neutral-500' : 'text-neutral-200'
+                            }`}>
+                              {habit.title}
+                            </h4>
+                          </div>
+                          <p className="text-[10px] text-neutral-500 font-semibold uppercase mt-0.5">{habit.frequency} Frequency</p>
+                        </div>
+                      </div>
+
+                      <div className="flex items-center justify-between sm:justify-end gap-6 shrink-0">
+                        {/* Streaks progress timeline */}
+                        <div className="flex flex-col items-end gap-1 select-none">
+                          <div className="flex gap-1">
+                            {past7Days.map((dateStr) => {
+                              const completed = habit.completions.some(c => c.date === dateStr && c.completed);
+                              const label = new Date(dateStr).toLocaleDateString(undefined, { weekday: 'short' })[0];
+                              return (
+                                <div
+                                  key={dateStr}
+                                  className={`w-4 h-4 rounded-full flex items-center justify-center text-[7px] font-black border ${
+                                    completed 
+                                      ? 'bg-indigo-600/80 border-indigo-500 text-white' 
+                                      : 'bg-neutral-900 border-white/5 text-neutral-500'
+                                  }`}
+                                  title={`${dateStr}: ${completed ? 'Done' : 'Missed'}`}
+                                >
+                                  {label}
+                                </div>
+                              );
+                            })}
+                          </div>
+                          <span className="text-[8px] text-neutral-500 font-bold uppercase tracking-wider">Past 7 Days</span>
+                        </div>
+
+                        {/* Flame Streaks */}
+                        <div className="flex items-center gap-1.5 border-l border-white/5 pl-4 shrink-0">
+                          <div className="text-center">
+                            <div className="flex items-center gap-0.5 justify-center">
+                              <Flame className={`w-4.5 h-4.5 ${
+                                habit.currentStreak > 0 ? 'text-orange-400 fill-orange-500/10' : 'text-neutral-600'
+                              }`} />
+                              <span className="text-sm font-black text-neutral-200">{habit.currentStreak}</span>
+                            </div>
+                            <span className="text-[8px] text-neutral-500 font-bold uppercase tracking-wider">Streak</span>
+                          </div>
+                          
+                          <button
+                            onClick={() => handleDeleteHabit(habit._id)}
+                            className="text-neutral-600 hover:text-red-400 p-1.5 rounded-lg cursor-pointer hover:bg-neutral-800 transition-colors ml-2"
+                            title="Delete habit"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
                       </div>
                     </div>
 
