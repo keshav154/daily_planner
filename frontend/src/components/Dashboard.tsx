@@ -103,7 +103,7 @@ export const Dashboard: React.FC = () => {
               <Sparkles className="w-4 h-4" />
             </div>
             <span className="font-black font-sans text-sm uppercase tracking-wider text-neutral-100">
-              Kortex CLI
+              KortexKeshav
             </span>
           </div>
           <button 

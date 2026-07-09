@@ -125,15 +125,15 @@ export const WeeklyReviewView: React.FC = () => {
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
         <div className="flex items-center gap-3">
-          <div className="w-10 h-10 rounded-xl bg-indigo-600/20 flex items-center justify-center border border-indigo-500/20">
-            <BarChart2 className="w-5 h-5 text-indigo-400" />
+          <div className="w-10 h-10 rounded-none bg-[#C4B5FD] text-black flex items-center justify-center border-2 border-black dark:border-white shadow-[1px_1px_0px_0px_rgba(0,0,0,1)]">
+            <BarChart2 className="w-5 h-5 text-black" />
           </div>
           <div>
-            <h1 className="text-xl font-extrabold text-neutral-100 tracking-tight">Weekly Review</h1>
-            <p className="text-xs text-neutral-500 font-semibold">Your productivity insights</p>
+            <h1 className="text-xl font-black text-black dark:text-neutral-100 tracking-tight">Weekly Review</h1>
+            <p className="text-xs text-neutral-500 font-bold">Your productivity insights</p>
           </div>
         </div>
-        <span className="text-xs font-bold text-indigo-400 bg-indigo-500/10 border border-indigo-500/20 px-3 py-1.5 rounded-full self-start sm:self-auto">
+        <span className="text-xs font-black text-black dark:text-indigo-300 bg-[#C4B5FD] border-2 border-black px-3 py-1.5 rounded-none self-start sm:self-auto uppercase shadow-[1px_1px_0px_0px_rgba(0,0,0,1)]">
           {getWeekRange()}
         </span>
       </div>
@@ -145,11 +145,11 @@ export const WeeklyReviewView: React.FC = () => {
           return (
             <div
               key={card.label}
-              className={`glass-panel rounded-xl p-5 border-l-2 ${card.borderColor} space-y-2`}
+              className="glass-panel p-5 space-y-2"
             >
               <div className="flex items-center gap-2">
                 <Icon className={`w-4 h-4 ${card.color}`} />
-                <p className="text-[10px] font-bold text-neutral-400 uppercase tracking-wider">
+                <p className="text-[10px] font-black text-neutral-500 dark:text-neutral-400 uppercase tracking-wider">
                   {card.label}
                 </p>
               </div>
@@ -161,9 +161,9 @@ export const WeeklyReviewView: React.FC = () => {
 
       {/* AI Summary */}
       {data.summary && (
-        <div className="glass-panel rounded-2xl p-6 border-l-4 border-indigo-500/60 shadow-xl">
-          <p className="text-[10px] font-bold uppercase tracking-wider text-indigo-400 mb-3">AI Summary</p>
-          <blockquote className="text-sm text-neutral-300 leading-relaxed font-medium italic">
+        <div className="glass-panel p-6 border-l-8 border-indigo-500">
+          <p className="text-[10px] font-black uppercase tracking-wider text-indigo-600 dark:text-indigo-400 mb-3">AI Summary</p>
+          <blockquote className="text-sm text-black dark:text-neutral-300 leading-relaxed font-bold italic">
             "{data.summary}"
           </blockquote>
         </div>
@@ -172,20 +172,20 @@ export const WeeklyReviewView: React.FC = () => {
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
         {/* Top Categories */}
         {data.categories && data.categories.length > 0 && (
-          <div className="glass-panel rounded-2xl p-6 shadow-xl space-y-4">
-            <h3 className="text-sm font-bold text-neutral-100 uppercase tracking-wider border-b border-white/5 pb-3">
+          <div className="glass-panel p-6 space-y-4">
+            <h3 className="text-sm font-black text-black dark:text-neutral-100 uppercase tracking-wider border-b border-black dark:border-white pb-3">
               Top Categories
             </h3>
             <div className="space-y-3">
               {data.categories.map((cat) => (
                 <div key={cat.name} className="space-y-1">
-                  <div className="flex items-center justify-between text-xs">
-                    <span className="font-semibold text-neutral-300">{cat.name}</span>
-                    <span className="text-neutral-500 font-mono">{cat.percentage}%</span>
+                  <div className="flex items-center justify-between text-xs font-bold text-black dark:text-neutral-300">
+                    <span>{cat.name}</span>
+                    <span className="font-mono">{cat.percentage}%</span>
                   </div>
-                  <div className="h-1.5 bg-neutral-800 rounded-full overflow-hidden">
+                  <div className="h-4 bg-neutral-200 dark:bg-neutral-800 border-2 border-black overflow-hidden rounded-none">
                     <div
-                      className="h-full bg-gradient-to-r from-indigo-500 to-violet-500 rounded-full transition-all duration-500"
+                      className="h-full bg-[#C4B5FD] transition-all duration-500 border-r-2 border-black"
                       style={{ width: `${Math.min(cat.percentage, 100)}%` }}
                     />
                   </div>
@@ -197,8 +197,8 @@ export const WeeklyReviewView: React.FC = () => {
 
         {/* Habit Stats */}
         {data.habitStats && data.habitStats.length > 0 && (
-          <div className="glass-panel rounded-2xl p-6 shadow-xl space-y-4">
-            <h3 className="text-sm font-bold text-neutral-100 uppercase tracking-wider border-b border-white/5 pb-3">
+          <div className="glass-panel p-6 space-y-4">
+            <h3 className="text-sm font-black text-black dark:text-neutral-100 uppercase tracking-wider border-b border-black dark:border-white pb-3">
               Habit Performance (7-day)
             </h3>
             <div className="space-y-2">
@@ -206,18 +206,18 @@ export const WeeklyReviewView: React.FC = () => {
                 const rate = h.completionRate ?? 0;
                 const badgeClass =
                   rate >= 80
-                    ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20'
+                    ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-500/10 dark:text-emerald-400 border-2 border-black'
                     : rate >= 50
-                    ? 'bg-amber-500/10 text-amber-400 border-amber-500/20'
-                    : 'bg-red-500/10 text-red-400 border-red-500/20';
+                    ? 'bg-amber-100 text-amber-800 dark:bg-amber-500/10 dark:text-amber-400 border-2 border-black'
+                    : 'bg-red-100 text-red-800 dark:bg-red-500/10 dark:text-red-400 border-2 border-black';
                 return (
                   <div
                     key={h.name}
-                    className="flex items-center justify-between py-2 border-b border-white/5 last:border-0"
+                    className="flex items-center justify-between py-2 border-b border-black dark:border-white last:border-0"
                   >
-                    <span className="text-sm text-neutral-300 font-medium">{h.name}</span>
+                    <span className="text-sm text-black dark:text-neutral-300 font-bold">{h.name}</span>
                     <span
-                      className={`text-[10px] font-bold px-2.5 py-0.5 rounded-full border ${badgeClass}`}
+                      className={`text-[10px] font-black px-2.5 py-0.5 rounded-none uppercase ${badgeClass}`}
                     >
                       {rate}%
                     </span>
@@ -232,14 +232,14 @@ export const WeeklyReviewView: React.FC = () => {
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
         {/* Highlights */}
         {data.highlights && data.highlights.length > 0 && (
-          <div className="glass-panel rounded-2xl p-6 shadow-xl space-y-4">
-            <h3 className="text-sm font-bold text-neutral-100 uppercase tracking-wider border-b border-white/5 pb-3">
+          <div className="glass-panel p-6 space-y-4">
+            <h3 className="text-sm font-black text-black dark:text-neutral-100 uppercase tracking-wider border-b border-black dark:border-white pb-3">
               ✨ Highlights
             </h3>
             <ul className="space-y-2.5">
               {data.highlights.map((hl, i) => (
-                <li key={i} className="flex items-start gap-2.5 text-sm text-neutral-300">
-                  <span className="w-1.5 h-1.5 rounded-full bg-indigo-400 mt-1.5 shrink-0" />
+                <li key={i} className="flex items-start gap-2.5 text-sm text-black dark:text-neutral-300 font-bold animate-fadeIn">
+                  <span className="w-2.5 h-2.5 rounded-none bg-indigo-600 dark:bg-indigo-400 mt-1.5 shrink-0 border-2 border-black" />
                   {hl}
                 </li>
               ))}
@@ -249,14 +249,14 @@ export const WeeklyReviewView: React.FC = () => {
 
         {/* Improvement Callout */}
         {data.improvement && (
-          <div className="glass-panel rounded-2xl p-6 shadow-xl border border-amber-500/20 bg-amber-950/10 space-y-3">
-            <div className="flex items-center gap-2 border-b border-amber-500/10 pb-3">
+          <div className="glass-panel p-6 bg-amber-50 dark:bg-amber-950/10 border-2 border-amber-500 space-y-3">
+            <div className="flex items-center gap-2 border-b border-amber-500 pb-3">
               <span className="text-lg">💡</span>
-              <h3 className="text-sm font-bold text-amber-400 uppercase tracking-wider">
+              <h3 className="text-sm font-black text-amber-800 dark:text-amber-400 uppercase tracking-wider">
                 This Week's Focus
               </h3>
             </div>
-            <p className="text-sm text-amber-200/80 leading-relaxed">{data.improvement}</p>
+            <p className="text-sm text-black dark:text-neutral-300 font-bold leading-relaxed">{data.improvement}</p>
           </div>
         )}
       </div>
