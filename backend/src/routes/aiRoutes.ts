@@ -1,6 +1,7 @@
 import { Router, Request, Response } from 'express';
 import mongoose from 'mongoose';
-import { Task, Log, User } from '../models/Schemas';
+import { Task, Log, User, AgentMemory } from '../models/Schemas';
+import { AuthRequest } from '../middleware/auth';
 import Habit from '../models/Habit';
 import { queryNvidiaNim } from '../config/nvidia';
 import Anthropic from '@anthropic-ai/sdk';
@@ -760,67 +761,112 @@ router.post('/parse-clipboard', async (req: Request, res: Response) => {
       return res.status(400).json({ error: 'text content is required' });
     }
 
-    const prompt = `You are an AI task extraction assistant. The user has copied raw text from their workspace (Jira ticket details, Outlook emails, calendar event notes, or Slack chats).
-Analyze the following text and extract all actionable tasks:
+    const authReq = req as any;
+    const userId = authReq.userId;
+
+    const prompt = `You are an AI task and reference extraction assistant. The user has copied raw text from their SRE work environment (Jira ticket details, terminal logs, Slack chats, code blocks, or setup guides).
+Analyze the following text and extract:
+1. Actionable tasks.
+2. Technical commands, runbooks, architectural facts, or incident insights that are valuable for long-term reference.
+
+Text to analyze:
 """
 ${text}
 """
 
 Guidelines:
-- If Jira tickets are mentioned (e.g. "DEV-204" or "[PRJ-99]"), prefix the task title with the Jira key: e.g. "[DEV-204] Fix login crash".
-- Try to estimate task duration in minutes (estimatedTime). Story points can be mapped: 1pt = 60m, 2pt = 120m, 3pt = 180m, etc. Default to 60 if unsure.
-- Deduce priority (high|medium|low) and category (Work|Personal|Health|Learning) from context.
-- Extract any subtasks if the task involves multiple steps.
+- Actionable Tasks:
+  - Extract any specific TODOs or action items.
+  - If Jira tickets are mentioned (e.g. "DEV-204" or "[PRJ-99]"), prefix the task title with the Jira key: e.g. "[DEV-204] Fix login crash".
+  - Estimate task duration in minutes (estimatedTime). Story points can be mapped: 1pt = 60m, 2pt = 120m, etc. Default to 60.
+  - Deduce priority (high|medium|low) and category (Work|Personal|Health|Learning).
+  - Extract subtasks if the task involves multiple steps.
+- Technical References & Commands (Memories):
+  - Extract specific terminal commands (e.g. kubectl commands, docker runs, git commands), environment setups, architectural configuration notes, or post-mortem incident facts.
+  - Keep the content concise but detailed enough to be useful for copy-pasting or querying later.
+  - Group them under the category "Tech Reference" or "SRE Command".
 
-Return ONLY a valid JSON array:
-[
-  {
-    "title": "task title",
-    "description": "short description or ticket summary",
-    "priority": "high|medium|low",
-    "estimatedTime": 60,
-    "category": "Work",
-    "subtasks": ["subtask 1", "subtask 2"]
-  }
-]`;
+Format your output strictly as a JSON object containing two keys: "tasks" (array of task objects) and "memories" (array of reference/command objects):
+{
+  "tasks": [
+    {
+      "title": "task title",
+      "description": "short description or ticket summary",
+      "priority": "high|medium|low",
+      "estimatedTime": 60,
+      "category": "Work",
+      "subtasks": ["subtask 1", "subtask 2"]
+    }
+  ],
+  "memories": [
+    {
+      "content": "Description of the SRE command or configuration details, including exact syntax (e.g., 'kubectl get pods -n kube-system')",
+      "category": "Tech Reference|SRE Command",
+      "importance": 6
+    }
+  ]
+}`;
 
-    const raw = await queryLLM(prompt, 800);
+    const raw = await queryLLM(prompt, 1200);
+    let tasks: any[] = [];
+    let savedMemories: any[] = [];
+
     if (raw) {
-      const parsed = parseAiJson<any[]>(raw);
-      if (parsed && Array.isArray(parsed)) {
-        return res.json({ tasks: parsed });
+      const parsed = parseAiJson<{ tasks?: any[]; memories?: any[] }>(raw);
+      if (parsed) {
+        tasks = parsed.tasks || [];
+        const extractedMemories = parsed.memories || [];
+
+        // Save any extracted memories autonomously
+        if (extractedMemories.length > 0 && userId) {
+          for (const m of extractedMemories) {
+            const memory = new AgentMemory({
+              userId,
+              type: 'preference',
+              content: m.content,
+              category: m.category || 'Tech Reference',
+              source: 'autonomous',
+              importance: m.importance || 6,
+              feedback: 'accepted',
+              lastAccessedAt: new Date()
+            });
+            await memory.save();
+            savedMemories.push(memory);
+          }
+        }
       }
     }
 
-    // Offline fallback: regex line scanner for Jira ticket keys (PRJ-123) and bullets
-    const tasks: any[] = [];
-    const jiraPattern = /([A-Z]{2,10}-\d+)/gi;
-    const lines = text.split('\n').map(l => l.trim()).filter(l => l.length > 5);
+    // Offline fallback if LLM query failed or tasks were empty
+    if (tasks.length === 0) {
+      const jiraPattern = /([A-Z]{2,10}-\d+)/gi;
+      const lines = text.split('\n').map(l => l.trim()).filter(l => l.length > 5);
 
-    for (const line of lines) {
-      const jiraMatch = line.match(jiraPattern);
-      if (jiraMatch) {
-        tasks.push({
-          title: line.replace(/^[-*•]\s*/, ''),
-          description: `Extracted from Jira ticket mention: ${jiraMatch.join(', ')}`,
-          priority: 'high',
-          estimatedTime: 60,
-          category: 'Work',
-          subtasks: []
-        });
-      } else if (/^[-*•]/.test(line)) {
-        tasks.push({
-          title: line.replace(/^[-*•]\s*/, ''),
-          description: 'Extracted list item.',
-          priority: 'medium',
-          estimatedTime: 30,
-          category: 'Work',
-          subtasks: []
-        });
+      for (const line of lines) {
+        const jiraMatch = line.match(jiraPattern);
+        if (jiraMatch) {
+          tasks.push({
+            title: line.replace(/^[-*•]\s*/, ''),
+            description: `Extracted from Jira ticket mention: ${jiraMatch.join(', ')}`,
+            priority: 'high',
+            estimatedTime: 60,
+            category: 'Work',
+            subtasks: []
+          });
+        } else if (/^[-*•]/.test(line)) {
+          tasks.push({
+            title: line.replace(/^[-*•]\s*/, ''),
+            description: 'Extracted list item.',
+            priority: 'medium',
+            estimatedTime: 30,
+            category: 'Work',
+            subtasks: []
+          });
+        }
       }
     }
 
-    // Default task if nothing was matched
+    // Default task if nothing was matched at all
     if (tasks.length === 0) {
       tasks.push({
         title: 'Review pasted workspace clipboard items',
@@ -832,7 +878,7 @@ Return ONLY a valid JSON array:
       });
     }
 
-    return res.json({ tasks });
+    return res.json({ tasks, memories: savedMemories });
   } catch (error: any) {
     return res.status(500).json({ error: error.message });
   }

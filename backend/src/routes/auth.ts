@@ -9,7 +9,12 @@ const router = Router();
 // Register a new user
 router.post('/register', async (req: Request, res: Response) => {
   try {
-    const { email, password, timezone, preferences, name, avatar } = req.body;
+    const { email, password, timezone, preferences, name, avatar, registrationCode } = req.body;
+
+    const requiredCode = process.env.REGISTRATION_CODE || 'Kortex2026';
+    if (!registrationCode || registrationCode !== requiredCode) {
+      return res.status(401).json({ error: 'Invalid or missing registration invite code' });
+    }
 
     if (!email || !password) {
       return res.status(400).json({ error: 'Email and password are required' });

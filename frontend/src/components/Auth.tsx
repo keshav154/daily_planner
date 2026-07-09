@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useAuth } from '../context/AuthContext';
 import api from '../services/api';
 import { 
-  Mail, Lock, Sparkles, Loader2, User, Eye, EyeOff, Globe, Clock, Zap, Sun, Moon, Sunrise, Sunset 
+  Mail, Lock, Sparkles, Loader2, User, Eye, EyeOff, Globe, Clock, Zap, Sun, Moon, Sunrise, Sunset, Key 
 } from 'lucide-react';
 
 export const Auth: React.FC = () => {
@@ -12,6 +12,7 @@ export const Auth: React.FC = () => {
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [name, setName] = useState('');
+  const [registrationCode, setRegistrationCode] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
@@ -84,7 +85,12 @@ export const Auth: React.FC = () => {
       if (isLogin) {
         await login(email, password);
       } else {
-        await register(email, password, name, timezone);
+        if (!registrationCode.trim()) {
+          setError('Invite access code is required');
+          setLoading(false);
+          return;
+        }
+        await register(email, password, registrationCode, name, timezone);
         setShowOnboarding(true);
       }
     } catch (err: any) {
@@ -447,22 +453,42 @@ export const Auth: React.FC = () => {
 
                 {/* Confirm Password field (Signup only) */}
                 {!isLogin && (
-                  <div>
-                    <label className="block text-[10px] font-bold uppercase tracking-wider text-neutral-400 mb-1.5">Confirm Password</label>
-                    <div className="relative">
-                      <span className="absolute inset-y-0 left-0 pl-3.5 flex items-center text-neutral-500">
-                        <Lock className="w-4 h-4" />
-                      </span>
-                      <input
-                        type="password"
-                        required
-                        className="w-full pl-10 pr-4 py-3 rounded-xl text-xs text-neutral-100 placeholder-neutral-500 glass-input"
-                        placeholder="••••••••"
-                        value={confirmPassword}
-                        onChange={(e) => setConfirmPassword(e.target.value)}
-                      />
+                  <>
+                    <div>
+                      <label className="block text-[10px] font-bold uppercase tracking-wider text-neutral-400 mb-1.5">Confirm Password</label>
+                      <div className="relative">
+                        <span className="absolute inset-y-0 left-0 pl-3.5 flex items-center text-neutral-500">
+                          <Lock className="w-4 h-4" />
+                        </span>
+                        <input
+                          type="password"
+                          required
+                          className="w-full pl-10 pr-4 py-3 rounded-xl text-xs text-neutral-100 placeholder-neutral-500 glass-input"
+                          placeholder="••••••••"
+                          value={confirmPassword}
+                          onChange={(e) => setConfirmPassword(e.target.value)}
+                        />
+                      </div>
                     </div>
-                  </div>
+
+                    <div>
+                      <label className="block text-[10px] font-bold uppercase tracking-wider text-neutral-400 mb-1.5">Invite / Access Code</label>
+                      <div className="relative">
+                        <span className="absolute inset-y-0 left-0 pl-3.5 flex items-center text-neutral-500">
+                          <Key className="w-4 h-4" />
+                        </span>
+                        <input
+                          id="invite-code-input"
+                          type="text"
+                          required
+                          className="w-full pl-10 pr-4 py-3 rounded-xl text-xs text-neutral-100 placeholder-neutral-500 glass-input"
+                          placeholder="Enter registration code"
+                          value={registrationCode}
+                          onChange={(e) => setRegistrationCode(e.target.value)}
+                        />
+                      </div>
+                    </div>
+                  </>
                 )}
 
                 <button

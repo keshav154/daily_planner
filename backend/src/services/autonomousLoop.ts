@@ -96,12 +96,18 @@ export const runAutonomousAgentLoop = async (userId: string, trigger: string = '
     const tasksQuery = activeTasks.map(t => t.title).join(' ');
     const memories = await getRelevantMemories(userId, tasksQuery, 10);
 
+    const adjustedPreferences = { 
+      ...user.preferences,
+      workingHoursStart: user.preferences.workMode === 'office' ? '10:30' : '10:00',
+      workingHoursEnd: user.preferences.workMode === 'office' ? '16:30' : '18:00'
+    };
+
     const context = {
       currentTime: now.toISOString(),
       user: {
         email: user.email,
         timezone: user.timezone,
-        preferences: user.preferences
+        preferences: adjustedPreferences as any
       },
       tasks: activeTasks.map(t => ({ id: t._id.toString(), title: t.title, priority: t.priority, status: t.status, estimatedTime: t.estimatedTime, order: t.order })),
       logs: dailyLogs.map(l => ({ title: l.title, duration: l.duration })),
@@ -118,7 +124,7 @@ Allowed proposal actions in suggestions:
 - "reorder": { "orderedTaskIds": string[] } (Reorder tasks to prioritize)
 - "suggest_time_block": { "taskId": string, "startTime": string, "duration": number } (Schedule a task to a focus block)
 - "break_down": { "taskId": string, "subtasks": string[] } (Decompose a big task)
-- "nudge": { "taskId": string, "message": string } (Alert the user to focus on an overdue item)
+- "nudge": { "taskId": string, "message": string } (Alert the user to focus on an overdue item or daily calendar overloading)
 - "create_task": { "title": string, "estimatedTime": number } (Create a catch-up or missing prerequisite task)
 
 Autonomous actions you can execute directly (returned under "directActions"):
@@ -149,10 +155,11 @@ Format output strictly as a JSON object containing:
 ${JSON.stringify(context, null, 2)}
 
 Inspect:
-1. Goal timelines: Are deadlines approaching but progress is low? If so, recommend creating catch-up tasks or add an agent note warning to the goal.
-2. Habit streaks: Are streaks at risk of breaking (atRisk: true) and is it late in the day (current local hour)? Propose creating a nudge task or memory warning.
-3. Task load: Are there overdue todo items or too many tasks scheduled? Recommend rescheduling or breaking them down.
-4. Past memories: Ensure your plan conforms to user preferences.
+1. Goal timelines: Are deadlines approaching but progress is low? Recommend creating catch-up tasks or add a goal warning.
+2. Habit streaks: Are streaks at risk of breaking? Propose creating a nudge task or memory warning.
+3. Task load & Calendar Load-Balancing: If user is in "office" workMode (working hours 10:30-16:30, i.e., 6-hour capacity), check if total task estimates exceed 4 hours. If overloaded, recommend a "nudge" or "reorder" proposing to defer low-priority tasks to tomorrow.
+4. Overdue tasks: Suggest rescheduling or breaking down overdue todo items.
+5. Past memories: Ensure your plan conforms to user preferences.
 
 Analyze the state, write your rationale, and output the suggestions and direct actions.`;
 
@@ -308,9 +315,22 @@ function runMockThinking(context: any): any {
     }
   }
 
-  // 3. Overdue task suggestions
+  // 3. Overdue task suggestions & Calendar Load-Balancer
   const overdueTasks = context.tasks.filter((t: any) => t.status !== 'done' && t.status !== 'skipped');
-  if (overdueTasks.length > 5) {
+  const totalEstimated = overdueTasks.reduce((sum: number, t: any) => sum + (t.estimatedTime || 0), 0);
+  const isOffice = context.user.preferences?.workMode === 'office';
+
+  if (isOffice && totalEstimated > 240) {
+    const lowPriorityTasks = overdueTasks.filter((t: any) => t.priority === 'low');
+    suggestions.push({
+      id: 'suggest-office-load-balance',
+      actionType: 'nudge',
+      description: `Office Day Focus Guard: You have ${totalEstimated} minutes of estimated tasks scheduled today. This exceeds your safe 4-hour office capacity (10:30-16:30). Consider rescheduling low-priority items like: ${lowPriorityTasks.map((t: any) => `"${t.title}"`).join(', ') || 'some items'}.`,
+      details: {
+        rescheduleCandidateIds: lowPriorityTasks.map((t: any) => t.id)
+      }
+    });
+  } else if (overdueTasks.length > 5) {
     suggestions.push({
       id: 'suggest-reschedule-overload',
       actionType: 'reorder',

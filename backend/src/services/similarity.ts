@@ -1,5 +1,29 @@
 import { AgentMemory } from '../models/Schemas';
 
+const SRE_SYNONYMS: Record<string, string[]> = {
+  'kubernetes': ['k8s', 'cluster', 'clusters', 'pod', 'pods', 'deployment', 'deployments', 'helm', 'kubectl'],
+  'k8s': ['kubernetes', 'cluster', 'clusters', 'pod', 'pods', 'deployment', 'deployments', 'helm', 'kubectl'],
+  'cluster': ['kubernetes', 'k8s', 'pods', 'node', 'nodes'],
+  'clusters': ['kubernetes', 'k8s', 'pods', 'node', 'nodes'],
+  'pod': ['kubernetes', 'k8s', 'cluster', 'container', 'containers'],
+  'pods': ['kubernetes', 'k8s', 'cluster', 'container', 'containers'],
+  'docker': ['container', 'containers', 'image', 'images', 'dockerfile'],
+  'container': ['docker', 'containers', 'pod', 'pods'],
+  'containers': ['docker', 'container', 'pod', 'pods'],
+  'terraform': ['iac', 'infrastructure', 'tf', 'ansible', 'pulumi'],
+  'iac': ['terraform', 'infrastructure', 'tf'],
+  'monitoring': ['prometheus', 'grafana', 'alerts', 'datadog', 'alertmanager', 'metrics'],
+  'prometheus': ['monitoring', 'grafana', 'alerts', 'metrics'],
+  'grafana': ['monitoring', 'prometheus', 'dashboard', 'dashboards'],
+  'jira': ['ticket', 'tickets', 'issue', 'issues', 'task', 'tasks'],
+  'ticket': ['jira', 'tickets', 'issue', 'issues'],
+  'tickets': ['jira', 'ticket', 'issue', 'issues'],
+  'database': ['db', 'postgres', 'postgresql', 'mongodb', 'mysql', 'redis'],
+  'db': ['database', 'postgres', 'postgresql', 'mongodb', 'mysql', 'redis'],
+  'wfh': ['remote', 'home', 'work-from-home'],
+  'office': ['on-site', 'physical', 'hq']
+};
+
 /**
  * Searches and ranks memories relevant to a user's text query or daily context
  * using token-overlap based cosine similarity matching.
@@ -50,10 +74,22 @@ export const getRelevantMemories = async (
       let matchCount = 0;
 
       queryTokens.forEach(qToken => {
-        if (contentTokens.includes(qToken)) {
-          matchCount += 1.0;
-        } else {
-          const hasPartial = contentTokens.some(cToken => cToken.includes(qToken) || qToken.includes(cToken));
+        const synonyms = SRE_SYNONYMS[qToken] || [];
+        const tokensToMatch = [qToken, ...synonyms];
+
+        let foundMatch = false;
+        for (const token of tokensToMatch) {
+          if (contentTokens.includes(token)) {
+            matchCount += 1.0;
+            foundMatch = true;
+            break;
+          }
+        }
+
+        if (!foundMatch) {
+          const hasPartial = contentTokens.some(cToken => 
+            tokensToMatch.some(t => cToken.includes(t) || t.includes(cToken))
+          );
           if (hasPartial) {
             matchCount += 0.4;
           }

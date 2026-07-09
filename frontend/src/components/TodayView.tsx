@@ -150,7 +150,7 @@ export const TodayView: React.FC = () => {
     };
   }, [selectedDate]);
 
-  // Quick NLP add
+  // Quick NLP add (Instant Save)
   const handleNlpSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!nlpText.trim()) return;
@@ -160,10 +160,31 @@ export const TodayView: React.FC = () => {
         text: nlpText,
         timezone: Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC'
       });
+      await api.post('/tasks', response.data);
+      setNlpText('');
+      fetchTodayData();
+    } catch (err: any) {
+      console.error('NLP Parse & Save error:', err);
+      alert('Failed to parse or add task: ' + (err.response?.data?.error || err.message));
+    } finally {
+      setNlpParsing(false);
+    }
+  };
+
+  // Draft and review task details first
+  const handleNlpDraftAndReview = async () => {
+    if (!nlpText.trim()) return;
+    setNlpParsing(true);
+    try {
+      const response = await api.post('/tasks/quick-add', {
+        text: nlpText,
+        timezone: Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC'
+      });
       setParsedTask(response.data);
       setShowConfirmModal(true);
-    } catch (err) {
+    } catch (err: any) {
       console.error('NLP Parse error:', err);
+      alert('Failed to parse description: ' + (err.response?.data?.error || err.message));
     } finally {
       setNlpParsing(false);
     }
@@ -210,7 +231,7 @@ export const TodayView: React.FC = () => {
     }
   };
 
-  // Trigger task complete log dialog
+  // Trigger task complete log dialog (1-click completion)
   const toggleTaskStatus = async (task: Task) => {
     if (task.status === 'done') {
       // Un-complete task
@@ -222,10 +243,26 @@ export const TodayView: React.FC = () => {
         alert('Failed to uncomplete task: ' + (err.response?.data?.error || err.message));
       }
     } else {
-      // Prompt for duration & notes to log
-      setCompletingTask(task);
-      setCompletionDuration(task.estimatedTime || 30);
-      setCompletionNotes('');
+      // 1-Click quick complete: log work and mark task status as done in the background
+      const duration = task.estimatedTime || 30;
+      try {
+        await api.post('/logs', {
+          taskId: task._id,
+          title: `Completed: ${task.title}`,
+          duration: Number(duration),
+          notes: 'Completed in 1-click.'
+        });
+
+        await api.put(`/tasks/${task._id}`, {
+          status: 'done',
+          actualTime: Number(duration)
+        });
+
+        fetchTodayData();
+      } catch (err: any) {
+        console.error('Failed to quick complete task:', err);
+        alert('Failed to quick complete task: ' + (err.response?.data?.error || err.message));
+      }
     }
   };
 
@@ -478,7 +515,7 @@ export const TodayView: React.FC = () => {
           <input
             id="nlp-input"
             type="text"
-            className="w-full pl-11 pr-36 py-4 rounded-xl text-base text-neutral-100 placeholder-neutral-500 glass-input"
+            className="w-full pl-11 pr-56 py-4 rounded-xl text-base text-neutral-100 placeholder-neutral-500 glass-input"
             placeholder="Type a task in plain English (e.g. 'draft design doc by tomorrow 3pm, high priority, #project')..."
             value={nlpText}
             onChange={(e) => setNlpText(e.target.value)}
@@ -487,7 +524,7 @@ export const TodayView: React.FC = () => {
           <button
             type="button"
             onClick={startVoiceInput}
-            className={`absolute right-24 top-2 py-2 px-2.5 rounded-lg border transition-colors cursor-pointer flex items-center justify-center ${
+            className={`absolute right-[180px] top-2 py-2 px-2.5 rounded-lg border transition-colors cursor-pointer flex items-center justify-center ${
               listening 
                 ? 'bg-red-500/20 border-red-500/30 text-red-400 animate-pulse' 
                 : 'bg-neutral-800 hover:bg-neutral-700 border-white/5 text-neutral-400 hover:text-neutral-200'
@@ -495,6 +532,15 @@ export const TodayView: React.FC = () => {
             title="Speech-to-Text Input"
           >
             <Mic className="w-4 h-4" />
+          </button>
+          <button
+            type="button"
+            onClick={handleNlpDraftAndReview}
+            disabled={nlpParsing || !nlpText.trim()}
+            className="absolute right-[96px] top-2 py-2 px-3 bg-neutral-900/60 hover:bg-neutral-800 text-indigo-400 font-semibold text-xs rounded-lg cursor-pointer border border-indigo-500/20 transition-colors disabled:opacity-40"
+            title="Draft and Review task details before saving"
+          >
+            Review ✨
           </button>
           <button
             id="nlp-submit-btn"
@@ -631,6 +677,18 @@ export const TodayView: React.FC = () => {
                         </div>
 
                         <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setCompletingTask(task);
+                              setCompletionDuration(task.estimatedTime || 30);
+                              setCompletionNotes('');
+                            }}
+                            className="p-1 rounded text-neutral-400 hover:text-emerald-400 hover:bg-neutral-800 cursor-pointer transition-colors"
+                            title="Log Work & Notes"
+                          >
+                            <Clock className="w-4 h-4" />
+                          </button>
                           <button
                             type="button"
                             disabled={index === 0}
