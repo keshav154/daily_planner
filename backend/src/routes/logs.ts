@@ -23,7 +23,9 @@ router.get('/', authenticateToken, async (req: AuthRequest, res: Response) => {
       query.timestamp = { $gte: startOfDay, $lte: endOfDay };
     }
 
-    const logs = await Log.find(query).sort({ timestamp: -1 });
+    const logs = await Log.find(query)
+      .populate('taskId', 'resolution description category')
+      .sort({ timestamp: -1 });
     res.json(logs);
   } catch (error: any) {
     console.error('Fetch logs error:', error);

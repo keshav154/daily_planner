@@ -27,6 +27,7 @@ interface Task {
   source: 'manual' | 'agent-suggested';
   subtasks: Array<{ title: string; completed: boolean }>;
   timeBlock?: { startTime: string; endTime: string };
+  resolution?: string;
 }
 
 interface Suggestion {
@@ -125,6 +126,27 @@ export const TodayView: React.FC = () => {
   const [expandedTasks, setExpandedTasks] = useState<Record<string, boolean>>({});
   const [subtaskInputs, setSubtaskInputs] = useState<Record<string, string>>({});
 
+  // Semantic Context Synapses states
+  const [taskContexts, setTaskContexts] = useState<Record<string, any[]>>({});
+  const [loadingContexts, setLoadingContexts] = useState<Record<string, boolean>>({});
+
+  const handleToggleExpandTask = async (taskId: string, title: string) => {
+    const isExpanding = !expandedTasks[taskId];
+    setExpandedTasks(prev => ({ ...prev, [taskId]: isExpanding }));
+
+    if (isExpanding && !taskContexts[taskId]) {
+      setLoadingContexts(prev => ({ ...prev, [taskId]: true }));
+      try {
+        const res = await api.get(`/memories/relevant?query=${encodeURIComponent(title)}`);
+        setTaskContexts(prev => ({ ...prev, [taskId]: res.data || [] }));
+      } catch (err) {
+        console.error('Failed to load semantic context:', err);
+      } finally {
+        setLoadingContexts(prev => ({ ...prev, [taskId]: false }));
+      }
+    }
+  };
+
   // Parsing Confirm Modal state
   const [parsedTask, setParsedTask] = useState<any>(null);
   const [showConfirmModal, setShowConfirmModal] = useState(false);
@@ -133,6 +155,7 @@ export const TodayView: React.FC = () => {
   const [completingTask, setCompletingTask] = useState<Task | null>(null);
   const [completionDuration, setCompletionDuration] = useState(30);
   const [completionNotes, setCompletionNotes] = useState('');
+  const [completionResolution, setCompletionResolution] = useState('');
 
   // Date selection
   const [selectedDate, setSelectedDate] = useState(() => {
@@ -296,13 +319,15 @@ export const TodayView: React.FC = () => {
         notes: completionNotes
       });
 
-      // 2. Mark task status as done
+      // 2. Mark task status as done and save resolution details
       await api.put(`/tasks/${completingTask._id}`, {
         status: 'done',
-        actualTime: Number(completionDuration)
+        actualTime: Number(completionDuration),
+        resolution: completionResolution
       });
 
       setCompletingTask(null);
+      setCompletionResolution('');
       fetchTodayData();
     } catch (err: any) {
       console.error('Failed to complete task:', err);
@@ -679,7 +704,7 @@ export const TodayView: React.FC = () => {
                         <div className="flex items-start gap-3 flex-1 min-w-0 pr-4">
                           <button
                             type="button"
-                            onClick={() => setExpandedTasks(prev => ({ ...prev, [task._id]: !prev[task._id] }))}
+                            onClick={() => handleToggleExpandTask(task._id, task.title)}
                             className="mt-1 text-neutral-500 hover:text-neutral-300 cursor-pointer transition-colors"
                           >
                             <ChevronRight className={`w-3.5 h-3.5 transform transition-transform ${expandedTasks[task._id] ? 'rotate-90' : ''}`} />
@@ -867,6 +892,58 @@ export const TodayView: React.FC = () => {
                               Add
                             </button>
                           </form>
+
+                          {/* Task Resolution Info (If already complete) */}
+                          {task.status === 'done' && task.resolution && (
+                            <div className="mt-3 p-3 rounded-lg bg-emerald-950/20 border border-emerald-500/10 space-y-1">
+                              <div className="flex items-center gap-1.5 text-[10px] font-bold text-emerald-400 uppercase tracking-wider">
+                                <Check className="w-3.5 h-3.5" />
+                                <span>Solution Logged</span>
+                              </div>
+                              <p className="text-xs text-neutral-300 whitespace-pre-wrap leading-relaxed">
+                                {task.resolution}
+                              </p>
+                            </div>
+                          )}
+
+                          {/* Context Synapses */}
+                          <div className="mt-3.5 pt-3 border-t border-white/5 space-y-2">
+                            <div className="flex items-center gap-1.5 text-[10px] font-bold text-indigo-400 uppercase tracking-wider">
+                              <Sparkles className="w-3.5 h-3.5 animate-pulse" />
+                              <span>🧠 Context Synapses</span>
+                            </div>
+                            
+                            {loadingContexts[task._id] ? (
+                              <p className="text-[10px] text-neutral-500 animate-pulse">Querying second brain...</p>
+                            ) : !taskContexts[task._id] || taskContexts[task._id].length === 0 ? (
+                              <p className="text-[10px] text-neutral-600 italic">No direct context links found.</p>
+                            ) : (
+                              <div className="space-y-2">
+                                {taskContexts[task._id].map((mem: any, mIdx: number) => {
+                                  const isResolution = mem.category === 'Resolution Reference';
+                                  return (
+                                    <div 
+                                      key={mIdx} 
+                                      className={`p-2.5 rounded-lg text-xs leading-relaxed space-y-1 border ${
+                                        isResolution 
+                                          ? 'bg-emerald-950/10 border-emerald-500/10 text-neutral-300' 
+                                          : 'bg-neutral-900/50 border-white/5 text-neutral-300'
+                                      }`}
+                                    >
+                                      <div className="flex items-center gap-1 text-[9px] font-bold uppercase tracking-wider text-neutral-500">
+                                        {isResolution ? (
+                                          <span className="text-emerald-400">🔧 Resolved Past Task</span>
+                                        ) : (
+                                          <span className="text-indigo-400">📖 Reference Note</span>
+                                        )}
+                                      </div>
+                                      <p className="font-sans whitespace-pre-wrap">{mem.content}</p>
+                                    </div>
+                                  );
+                                })}
+                              </div>
+                            )}
+                          </div>
                         </div>
                       )}
                     </motion.div>
@@ -1086,10 +1163,22 @@ export const TodayView: React.FC = () => {
                   Session Notes (optional)
                 </label>
                 <textarea
-                  className="w-full px-3 py-2 rounded-lg text-sm text-neutral-100 glass-input h-20 resize-none"
+                  className="w-full px-3 py-2 rounded-lg text-sm text-neutral-100 glass-input h-16 resize-none"
                   placeholder="What did you get done? Any insights or roadblocks?"
                   value={completionNotes}
                   onChange={(e) => setCompletionNotes(e.target.value)}
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-neutral-400 uppercase tracking-wider mb-1.5">
+                  Task Resolution Details (how it was done)
+                </label>
+                <textarea
+                  className="w-full px-3 py-2 rounded-lg text-sm text-neutral-100 glass-input h-20 resize-none font-sans"
+                  placeholder="e.g. commands run, configs changed, root cause fix..."
+                  value={completionResolution}
+                  onChange={(e) => setCompletionResolution(e.target.value)}
                 />
               </div>
             </div>

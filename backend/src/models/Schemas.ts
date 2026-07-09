@@ -11,6 +11,7 @@ export interface IUser extends Document {
   xp: number;
   level: number;
   achievements: string[];
+  apiKey: string;
   preferences: {
     workingHoursStart: string; // e.g. "09:00"
     workingHoursEnd: string;   // e.g. "17:00"
@@ -31,6 +32,7 @@ const UserSchema = new Schema<IUser>({
   xp: { type: Number, default: 0 },
   level: { type: Number, default: 1 },
   achievements: [{ type: String }],
+  apiKey: { type: String, unique: true, index: true },
   preferences: {
     workingHoursStart: { type: String, default: '09:00' },
     workingHoursEnd: { type: String, default: '17:00' },
@@ -38,6 +40,13 @@ const UserSchema = new Schema<IUser>({
     workMode: { type: String, enum: ['office', 'wfh'], default: 'wfh' }
   }
 }, { timestamps: true });
+
+UserSchema.pre('save', function (next) {
+  if (!this.apiKey) {
+    this.apiKey = 'kt_live_' + require('crypto').randomBytes(24).toString('hex');
+  }
+  next();
+});
 
 // Task Schema
 export interface ITask extends Document {
@@ -55,6 +64,7 @@ export interface ITask extends Document {
   order: number;
   subtasks: Array<{ title: string; completed: boolean }>;
   timeBlock?: { startTime: string; endTime: string };
+  resolution?: string;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -79,7 +89,8 @@ const TaskSchema = new Schema<ITask>({
   timeBlock: {
     startTime: { type: String },
     endTime: { type: String }
-  }
+  },
+  resolution: { type: String, default: '' }
 }, { timestamps: true });
 
 // Log Schema

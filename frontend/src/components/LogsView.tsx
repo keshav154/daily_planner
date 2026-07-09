@@ -8,7 +8,12 @@ interface Log {
   duration: number;
   notes: string;
   timestamp: string;
-  taskId?: string;
+  taskId?: {
+    _id: string;
+    resolution?: string;
+    description?: string;
+    category?: string;
+  } | string;
 }
 
 export const LogsView: React.FC = () => {
@@ -232,6 +237,16 @@ export const LogsView: React.FC = () => {
                       <p className="text-xs text-neutral-400 mt-1 bg-neutral-900/50 p-2.5 rounded border border-white/5 max-w-2xl whitespace-pre-wrap leading-relaxed">
                         {log.notes}
                       </p>
+                    )}
+                    {log.taskId && typeof log.taskId === 'object' && log.taskId.resolution && (
+                      <div className="mt-2 p-2.5 rounded-lg bg-emerald-950/10 border border-emerald-500/10 max-w-2xl space-y-1">
+                        <div className="flex items-center gap-1.5 text-[9px] font-bold text-emerald-400 uppercase tracking-wider">
+                          <span>🔧 Task Resolution Details</span>
+                        </div>
+                        <p className="text-xs text-neutral-300 whitespace-pre-wrap leading-relaxed font-sans">
+                          {log.taskId.resolution}
+                        </p>
+                      </div>
                     )}
                   </div>
                   <div className="flex items-center gap-3">

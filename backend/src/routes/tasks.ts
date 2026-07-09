@@ -3,6 +3,7 @@ import { Task } from '../models/Schemas';
 import { authenticateToken, AuthRequest } from '../middleware/auth';
 import { parseNaturalLanguageTask } from '../agent/parser';
 import { awardXP, XP_REWARDS } from '../services/xpEngine';
+import { handleTaskResolution } from '../services/resolutionHook';
 
 const router = Router();
 
@@ -96,6 +97,10 @@ router.put('/:id', authenticateToken, async (req: AuthRequest, res: Response) =>
       }
 
       await awardXP(req.userId as string, xpAwarded, `Completed task: ${task.title}`);
+    }
+
+    if (task && updates.resolution) {
+      await handleTaskResolution(req.userId as string, task.title, task.category, updates.resolution);
     }
 
     res.json(task);

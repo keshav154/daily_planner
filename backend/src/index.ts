@@ -14,6 +14,8 @@ import briefingRoutes from './routes/briefing';
 import exportRoutes from './routes/exportRoutes';
 import aiRoutes from './routes/aiRoutes';
 import goalRoutes from './routes/goals';
+import integrationRoutes from './routes/integration';
+import memoryRoutes from './routes/memoryRoutes';
 import { authenticateToken } from './middleware/auth';
 
 // Load environment variables
@@ -50,6 +52,8 @@ app.use('/api/briefing', authenticateToken, briefingRoutes);
 app.use('/api/export', authenticateToken, exportRoutes);
 app.use('/api/ai', authenticateToken, aiRoutes);
 app.use('/api/goals', authenticateToken, goalRoutes);
+app.use('/api/integration', integrationRoutes);
+app.use('/api/memories', memoryRoutes);
 
 // Global Error Handler
 app.use((err: any, req: express.Request, res: express.Response, next: express.NextFunction) => {
