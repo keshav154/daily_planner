@@ -972,22 +972,22 @@ export const TodayView: React.FC = () => {
               </div>
             ) : (
               <div className="space-y-4">
-                <div className="p-3.5 bg-indigo-950/20 border border-indigo-500/10 rounded-lg text-xs text-indigo-300 leading-relaxed font-sans">
-                  <span className="font-semibold block mb-1">Agent Rationale:</span>
+                <div className="p-3.5 bg-[#f3e8ff] dark:bg-indigo-950/20 border-2 border-black dark:border-white rounded-none text-xs text-black dark:text-neutral-200 leading-relaxed font-bold font-sans">
+                  <span className="font-black block mb-1 text-indigo-700 dark:text-indigo-400">Agent Rationale:</span>
                   {lastRun?.planOutput.rationale}
                 </div>
 
                 <div className="space-y-3">
                   {pendingSuggestions.map((s) => (
-                    <div key={s.id} className="p-3 bg-neutral-900/60 border border-white/5 rounded-lg text-xs space-y-2">
-                      <p className="font-semibold text-neutral-200">{s.description}</p>
+                    <div key={s.id} className="p-3 bg-white dark:bg-neutral-900/60 border-2 border-black dark:border-white rounded-none text-xs space-y-2 text-black dark:text-neutral-300">
+                      <p className="font-black text-black dark:text-neutral-200">{s.description}</p>
                       
                       {/* Action specifics preview */}
                       {s.actionType === 'break_down' && s.details.subtasks && (
-                        <div className="space-y-1 pl-1 py-1 text-neutral-400">
+                        <div className="space-y-1 pl-1 py-1 text-black dark:text-neutral-400 font-semibold">
                           {s.details.subtasks.map((st: string, idx: number) => (
                             <div key={idx} className="flex items-center gap-1.5">
-                              <CornerDownRight className="w-3 h-3 text-neutral-600" />
+                              <CornerDownRight className="w-3 h-3 text-neutral-600 dark:text-neutral-400" />
                               <span className="truncate">{st}</span>
                             </div>
                           ))}
@@ -995,21 +995,21 @@ export const TodayView: React.FC = () => {
                       )}
 
                       {s.actionType === 'suggest_time_block' && (
-                        <p className="text-neutral-400">
-                          Block: <span className="text-indigo-400 font-semibold">{s.details.startTime}</span> ({s.details.duration}m)
+                        <p className="text-black dark:text-neutral-400 font-semibold">
+                          Block: <span className="text-indigo-600 dark:text-indigo-400 font-black">{s.details.startTime}</span> ({s.details.duration}m)
                         </p>
                       )}
 
-                      <div className="flex items-center gap-2 pt-1.5 border-t border-white/5">
+                      <div className="flex items-center gap-2 pt-1.5 border-t border-black dark:border-white">
                         <button
                           onClick={() => handleSuggestionAction(s.id, 'accepted')}
-                          className="flex items-center gap-1 px-2.5 py-1 bg-indigo-600/20 hover:bg-indigo-600/30 text-indigo-300 font-semibold rounded cursor-pointer transition-colors"
+                          className="flex items-center gap-1 px-2.5 py-1 bg-[#39ff14] text-black font-black rounded-none border-2 border-black cursor-pointer shadow-[1px_1px_0px_0px_rgba(0,0,0,1)] active:translate-x-[1px] active:translate-y-[1px] active:shadow-none transition-all duration-100"
                         >
                           <Check className="w-3.5 h-3.5" /> Accept
                         </button>
                         <button
                           onClick={() => handleSuggestionAction(s.id, 'rejected')}
-                          className="flex items-center gap-1 px-2.5 py-1 bg-neutral-800 hover:bg-neutral-700 text-neutral-400 font-semibold rounded cursor-pointer transition-colors"
+                          className="flex items-center gap-1 px-2.5 py-1 bg-[#FF6B6B] text-black font-black rounded-none border-2 border-black cursor-pointer shadow-[1px_1px_0px_0px_rgba(0,0,0,1)] active:translate-x-[1px] active:translate-y-[1px] active:shadow-none transition-all duration-100"
                         >
                           <X className="w-3.5 h-3.5" /> Dismiss
                         </button>
