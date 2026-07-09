@@ -97,13 +97,13 @@ export const Dashboard: React.FC = () => {
         sidebarOpen ? 'translate-x-0' : '-translate-x-full'
       }`}>
         {/* Brand header */}
-        <div className="h-16 flex items-center justify-between px-6 border-b border-white/5">
+        <div className="h-16 flex items-center justify-between px-6 border-b-4 border-black dark:border-white">
           <div className="flex items-center gap-2">
-            <div className="w-8 h-8 rounded-lg bg-indigo-600 flex items-center justify-center text-white shadow-md shadow-indigo-600/30">
+            <div className="w-8 h-8 rounded-none border-2 border-black dark:border-white bg-[#FF6B6B] dark:bg-[#ff007f] flex items-center justify-center text-black dark:text-white shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] dark:shadow-[2px_2px_0px_0px_rgba(255,255,255,1)]">
               <Sparkles className="w-4 h-4" />
             </div>
-            <span className="font-extrabold font-sans text-base tracking-tight text-gradient">
-              Kortex by Keshav
+            <span className="font-black font-sans text-sm uppercase tracking-wider text-neutral-100">
+              Kortex CLI
             </span>
           </div>
           <button 
@@ -127,10 +127,10 @@ export const Dashboard: React.FC = () => {
                   setActiveTab(item.id);
                   setSidebarOpen(false);
                 }}
-                className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg text-sm font-semibold transition-all duration-200 cursor-pointer ${
+                className={`w-full flex items-center gap-3 px-4 py-3 rounded-none text-sm font-bold transition-all duration-100 cursor-pointer border ${
                   isActive 
-                    ? 'bg-indigo-600/10 text-indigo-400 border border-indigo-500/20' 
-                    : 'text-neutral-400 hover:text-neutral-200 hover:bg-neutral-900/50 border border-transparent'
+                    ? 'bg-indigo-600 text-white border-black dark:border-white shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] dark:shadow-[2px_2px_0px_0px_rgba(255,255,255,1)] translate-x-[-1px] translate-y-[-1px]' 
+                    : 'text-neutral-400 hover:text-neutral-200 hover:bg-neutral-900/40 border-transparent'
                 }`}
               >
                 <Icon className={`w-4 h-4 ${isActive ? 'text-indigo-400' : ''}`} />
@@ -158,10 +158,26 @@ export const Dashboard: React.FC = () => {
             </div>
           </div>
 
+          {user?.apiKey && (
+            <div className="px-2">
+              <button
+                type="button"
+                onClick={() => {
+                  navigator.clipboard.writeText(user.apiKey || '');
+                  alert('Kortex API Key copied to clipboard!');
+                }}
+                className="w-full py-2 px-2 bg-[#FFD93D] dark:bg-[#39ff14] text-black font-extrabold text-[10px] uppercase border-2 border-black dark:border-white rounded-none flex items-center justify-center gap-1.5 cursor-pointer shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] active:translate-x-[1px] active:translate-y-[1px] active:shadow-none transition-all duration-100"
+                title="Copy Kortex API Key for CLI/Coding Agent integration"
+              >
+                <span>🔑 Copy API Key</span>
+              </button>
+            </div>
+          )}
+
           <button
             id="logout-btn"
             onClick={logout}
-            className="w-full flex items-center justify-center gap-2 py-2 px-3 rounded-lg text-xs font-semibold text-neutral-400 hover:text-red-400 hover:bg-red-500/10 transition-colors border border-transparent cursor-pointer"
+            className="w-full flex items-center justify-center gap-2 py-2 px-3 rounded-none text-xs font-bold text-neutral-300 hover:text-white bg-neutral-900 border-2 border-black dark:border-white cursor-pointer hover:bg-red-600 transition-colors"
           >
             <LogOut className="w-3.5 h-3.5" />
             Sign Out

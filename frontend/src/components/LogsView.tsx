@@ -98,7 +98,7 @@ export const LogsView: React.FC = () => {
         <button
           id="toggle-add-log-btn"
           onClick={() => setShowAddForm(!showAddForm)}
-          className="flex items-center gap-2 py-2 px-4 rounded-lg bg-indigo-600 hover:bg-indigo-500 font-semibold text-sm text-white shadow-lg cursor-pointer transition-all"
+          className="flex items-center gap-2 py-2 px-4 rounded-none bg-[#FF6B6B] dark:bg-[#ff007f] hover:opacity-90 font-extrabold text-sm text-black dark:text-white border-2 border-black dark:border-white shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] active:translate-x-[1px] active:translate-y-[1px] active:shadow-none transition-all duration-100 cursor-pointer"
         >
           <Plus className="w-4 h-4" />
           {showAddForm ? 'Close Form' : 'Log General Work'}
@@ -159,7 +159,7 @@ export const LogsView: React.FC = () => {
             <button
               id="save-log-btn"
               type="submit"
-              className="px-4 py-2 bg-indigo-600 hover:bg-indigo-500 text-white font-semibold text-xs rounded-lg cursor-pointer transition-colors"
+              className="px-4 py-2 bg-[#FF6B6B] dark:bg-[#ff007f] text-white font-extrabold text-xs rounded-none border-2 border-black cursor-pointer shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] active:translate-x-[1px] active:translate-y-[1px] active:shadow-none transition-all duration-100"
             >
               Record Log
             </button>
@@ -219,7 +219,7 @@ export const LogsView: React.FC = () => {
             {filteredLogs.map((log) => (
               <div key={log._id} className="relative group">
                 {/* Timeline node */}
-                <div className="absolute -left-[31px] top-1.5 w-2 h-2 bg-indigo-500 rounded-full ring-4 ring-neutral-950"></div>
+                <div className="absolute -left-[35px] top-1 w-4 h-4 bg-[#FFD93D] dark:bg-[#39ff14] border-2 border-black dark:border-white shadow-[1px_1px_0px_0px_rgba(0,0,0,1)]"></div>
                 
                 <div className="flex items-start justify-between gap-4">
                   <div>

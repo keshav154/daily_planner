@@ -11,6 +11,7 @@ export interface IUser {
   xp?: number;
   level?: number;
   achievements?: string[];
+  apiKey?: string;
   preferences: {
     workingHoursStart: string;
     workingHoursEnd: string;

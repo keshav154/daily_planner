@@ -50,7 +50,8 @@ router.post('/register', async (req: Request, res: Response) => {
         name: user.name,
         avatar: user.avatar,
         timezone: user.timezone,
-        preferences: user.preferences
+        preferences: user.preferences,
+        apiKey: user.apiKey
       }
     });
   } catch (error: any) {
@@ -89,7 +90,8 @@ router.post('/login', async (req: Request, res: Response) => {
         name: user.name,
         avatar: user.avatar,
         timezone: user.timezone,
-        preferences: user.preferences
+        preferences: user.preferences,
+        apiKey: user.apiKey
       }
     });
   } catch (error: any) {

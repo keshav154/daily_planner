@@ -29,7 +29,10 @@ connectDB();
 
 // Middleware
 app.use(cors({
-  origin: '*', // Allow all origins for simplicity in development
+  origin: (origin, callback) => {
+    // Reflect request origin (or allow serverless/CLI requests with undefined origin)
+    callback(null, true);
+  },
   credentials: true
 }));
 app.use(express.json());

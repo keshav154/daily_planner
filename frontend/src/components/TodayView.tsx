@@ -538,17 +538,17 @@ export const TodayView: React.FC = () => {
       {/* Header bar */}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
-          <h1 className="text-3xl font-extrabold text-neutral-100 tracking-tight">Today's Focus</h1>
-          <p className="text-sm text-neutral-400">Organize, structure, and check off your logs.</p>
+          <h1 className="text-3xl font-black text-neutral-100 uppercase tracking-tight">Today's Focus</h1>
+          <p className="text-xs font-bold text-neutral-400">Organize, structure, and check off your logs.</p>
         </div>
         <div className="flex items-center gap-3">
           {/* View Mode Toggle */}
-          <div className="flex bg-neutral-900 border border-white/5 rounded-lg p-0.5 select-none shrink-0">
+          <div className="flex bg-neutral-900 border-2 border-black dark:border-white rounded-none p-0.5 select-none shrink-0">
             <button
               type="button"
               onClick={() => setViewMode('list')}
-              className={`p-2 rounded-md cursor-pointer transition-all ${
-                viewMode === 'list' ? 'bg-neutral-800 text-indigo-400' : 'text-neutral-500 hover:text-neutral-300'
+              className={`p-2 rounded-none cursor-pointer transition-all ${
+                viewMode === 'list' ? 'bg-[#C4B5FD] text-black border border-black font-bold' : 'text-neutral-500 hover:text-neutral-300'
               }`}
               title="Checklist View"
             >
@@ -557,8 +557,8 @@ export const TodayView: React.FC = () => {
             <button
               type="button"
               onClick={() => setViewMode('calendar')}
-              className={`p-2 rounded-md cursor-pointer transition-all ${
-                viewMode === 'calendar' ? 'bg-neutral-800 text-indigo-400' : 'text-neutral-500 hover:text-neutral-300'
+              className={`p-2 rounded-none cursor-pointer transition-all ${
+                viewMode === 'calendar' ? 'bg-[#C4B5FD] text-black border border-black font-bold' : 'text-neutral-500 hover:text-neutral-300'
               }`}
               title="Time-Blocking Calendar"
             >
@@ -571,21 +571,21 @@ export const TodayView: React.FC = () => {
             <button
               type="button"
               onClick={handleToggleWorkMode}
-              className={`flex items-center gap-1.5 px-3 py-2 rounded-lg border text-xs font-bold uppercase transition-all duration-200 cursor-pointer ${
+              className={`flex items-center gap-1.5 px-3 py-2 rounded-none border-2 border-black dark:border-white text-xs font-extrabold uppercase transition-all duration-100 cursor-pointer shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] dark:shadow-[2px_2px_0px_0px_rgba(255,255,255,1)] active:translate-x-[1px] active:translate-y-[1px] active:shadow-none ${
                 user.preferences?.workMode === 'office'
-                  ? 'bg-indigo-950/20 border-indigo-500/30 text-indigo-400'
-                  : 'bg-neutral-900/60 border-white/5 hover:border-white/10 text-neutral-400'
+                  ? 'bg-[#FFD93D] text-black'
+                  : 'bg-white text-black'
               }`}
               title="Toggle current work environment"
             >
               {user.preferences?.workMode === 'office' ? (
                 <>
-                  <Briefcase className="w-3.5 h-3.5 text-indigo-400" />
+                  <Briefcase className="w-3.5 h-3.5" />
                   Office Day
                 </>
               ) : (
                 <>
-                  <Home className="w-3.5 h-3.5 text-neutral-500" />
+                  <Home className="w-3.5 h-3.5" />
                   WFH Day
                 </>
               )}
@@ -595,7 +595,7 @@ export const TodayView: React.FC = () => {
           <input
             id="date-select"
             type="date"
-            className="px-3 py-2 rounded-lg text-sm text-neutral-200 glass-input cursor-pointer"
+            className="px-3 py-2 rounded-none text-sm text-neutral-200 glass-input cursor-pointer"
             value={selectedDate}
             onChange={(e) => setSelectedDate(e.target.value)}
           />
@@ -603,24 +603,22 @@ export const TodayView: React.FC = () => {
             id="run-agent-btn"
             disabled={planRunning}
             onClick={runAgentPlanner}
-            className="flex items-center gap-2 py-2 px-4 rounded-lg bg-indigo-600 hover:bg-indigo-500 font-semibold text-sm text-white shadow-lg cursor-pointer transition-all disabled:opacity-50"
+            className="flex items-center gap-2 py-2 px-4 rounded-none bg-[#FF6B6B] dark:bg-[#ff007f] hover:opacity-90 font-black text-sm text-white dark:text-white border-2 border-black dark:border-white shadow-[3px_3px_0px_0px_rgba(0,0,0,1)] dark:shadow-[3px_3px_0px_0px_rgba(255,255,255,1)] cursor-pointer active:translate-x-[2px] active:translate-y-[2px] active:shadow-none transition-all duration-100 disabled:opacity-50"
           >
             <Sparkles className={`w-4 h-4 ${planRunning ? 'animate-spin' : ''}`} />
             {planRunning ? 'Analyzing...' : 'Run Agent Planner'}
           </button>
         </div>
-      </div>
-
-      {/* NLP Quick Add Bar */}
+      </div>      {/* NLP Quick Add Bar */}
       <form onSubmit={handleNlpSubmit} className="relative">
         <div className="relative">
-          <span className="absolute inset-y-0 left-0 pl-4 flex items-center text-indigo-400">
+          <span className="absolute inset-y-0 left-0 pl-4 flex items-center text-[#FF6B6B]">
             <Zap className="w-5 h-5 animate-pulse" />
           </span>
           <input
             id="nlp-input"
             type="text"
-            className="w-full pl-11 pr-56 py-4 rounded-xl text-base text-neutral-100 placeholder-neutral-500 glass-input"
+            className="w-full pl-11 pr-56 py-4 rounded-none text-base text-neutral-100 placeholder-neutral-500 glass-input"
             placeholder="Type a task in plain English (e.g. 'draft design doc by tomorrow 3pm, high priority, #project')..."
             value={nlpText}
             onChange={(e) => setNlpText(e.target.value)}
@@ -629,10 +627,10 @@ export const TodayView: React.FC = () => {
           <button
             type="button"
             onClick={startVoiceInput}
-            className={`absolute right-[180px] top-2 py-2 px-2.5 rounded-lg border transition-colors cursor-pointer flex items-center justify-center ${
+            className={`absolute right-[180px] top-2 py-2 px-2.5 rounded-none border-2 transition-colors cursor-pointer flex items-center justify-center ${
               listening 
                 ? 'bg-red-500/20 border-red-500/30 text-red-400 animate-pulse' 
-                : 'bg-neutral-800 hover:bg-neutral-700 border-white/5 text-neutral-400 hover:text-neutral-200'
+                : 'bg-white hover:bg-neutral-100 border-black text-black'
             }`}
             title="Speech-to-Text Input"
           >
@@ -642,18 +640,17 @@ export const TodayView: React.FC = () => {
             type="button"
             onClick={handleNlpDraftAndReview}
             disabled={nlpParsing || !nlpText.trim()}
-            className="absolute right-[96px] top-2 py-2 px-3 bg-neutral-900/60 hover:bg-neutral-800 text-indigo-400 font-semibold text-xs rounded-lg cursor-pointer border border-indigo-500/20 transition-colors disabled:opacity-40"
+            className="absolute right-[96px] top-2 py-2 px-3 bg-[#FFD93D] dark:bg-[#39ff14] text-black font-extrabold text-xs rounded-none border-2 border-black cursor-pointer shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] active:translate-x-[1px] active:translate-y-[1px] active:shadow-none transition-all duration-100 disabled:opacity-40"
             title="Draft and Review task details before saving"
           >
             Review ✨
           </button>
           <button
-            id="nlp-submit-btn"
             type="submit"
             disabled={nlpParsing || !nlpText.trim()}
-            className="absolute right-2 top-2 py-2 px-4 bg-neutral-800 hover:bg-neutral-700 text-neutral-300 font-semibold text-xs rounded-lg cursor-pointer transition-colors disabled:opacity-40"
+            className="absolute right-2 top-2 py-2 px-4 bg-[#FF6B6B] dark:bg-[#ff007f] text-white font-black text-xs rounded-none border-2 border-black cursor-pointer shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] active:translate-x-[1px] active:translate-y-[1px] active:shadow-none transition-all duration-100 disabled:opacity-40"
           >
-            {nlpParsing ? 'Parsing...' : 'Quick Add'}
+            {nlpParsing ? 'Saving...' : 'Add Task'}
           </button>
         </div>
       </form>
@@ -732,33 +729,33 @@ export const TodayView: React.FC = () => {
                               </p>
                             )}
                             <div className="flex flex-wrap items-center gap-2 mt-2">
-                              <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full ${
-                                task.priority === 'high' ? 'bg-red-500/10 text-red-400 border border-red-500/20' :
-                                task.priority === 'medium' ? 'bg-amber-500/10 text-amber-400 border border-amber-500/20' :
-                                'bg-blue-500/10 text-blue-400 border border-blue-500/20'
+                              <span className={`text-[10px] font-black uppercase px-2 py-0.5 rounded-none border-2 border-black ${
+                                task.priority === 'high' ? 'bg-[#FF6B6B] text-black' :
+                                task.priority === 'medium' ? 'bg-[#FFD93D] text-black' :
+                                'bg-[#C4B5FD] text-black'
                               }`}>
                                 {task.priority}
                               </span>
-                              <span className="text-[10px] text-neutral-400 bg-neutral-900 px-2 py-0.5 rounded border border-white/5 flex items-center gap-1">
+                              <span className="text-[10px] text-neutral-400 bg-neutral-900 px-2 py-0.5 rounded-none border-2 border-black flex items-center gap-1 font-bold">
                                 <Clock className="w-3 h-3" /> {task.estimatedTime}m
                               </span>
                               {task.actualTime > 0 && (
-                                <span className="text-[10px] text-emerald-400 bg-emerald-950/20 px-2 py-0.5 rounded border border-emerald-500/10">
+                                <span className="text-[10px] text-emerald-600 bg-emerald-950/20 px-2 py-0.5 rounded-none border-2 border-emerald-500/20 font-bold">
                                   Logged: {task.actualTime}m
                                 </span>
                               )}
                               {task.category && (
-                                <span className="text-[10px] text-neutral-400 bg-neutral-900 px-2 py-0.5 rounded border border-white/5 flex items-center gap-1">
+                                <span className="text-[10px] text-neutral-400 bg-neo-muted/20 px-2 py-0.5 rounded-none border-2 border-black flex items-center gap-1 font-bold">
                                   <Tag className="w-3 h-3" /> {task.category}
                                 </span>
                               )}
                               {task.source === 'agent-suggested' && (
-                                <span className="text-[10px] text-indigo-400 bg-indigo-950/20 px-2 py-0.5 rounded border border-indigo-500/10 flex items-center gap-0.5 font-medium">
+                                <span className="text-[10px] text-indigo-500 bg-indigo-950/20 px-2 py-0.5 rounded-none border-2 border-indigo-500/20 flex items-center gap-0.5 font-bold">
                                   <Sparkles className="w-2.5 h-2.5" /> AI
                                 </span>
                               )}
                               {task.timeBlock?.startTime && (
-                                <span className="text-[10px] text-indigo-400 bg-indigo-950/20 px-2 py-0.5 rounded border border-indigo-500/10 flex items-center gap-1 font-semibold">
+                                <span className="text-[10px] text-indigo-500 bg-indigo-950/20 px-2 py-0.5 rounded-none border-2 border-indigo-500/20 flex items-center gap-1 font-bold">
                                   <Clock className="w-3.5 h-3.5 text-neutral-500" /> {task.timeBlock.startTime} - {task.timeBlock.endTime}
                                 </span>
                               )}
