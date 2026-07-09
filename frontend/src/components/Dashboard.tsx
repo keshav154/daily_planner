@@ -98,11 +98,9 @@ export const Dashboard: React.FC = () => {
       }`}>
         {/* Brand header */}
         <div className="h-16 flex items-center justify-between px-6 border-b-4 border-black dark:border-white">
-          <div className="flex items-center gap-2">
-            <div className="w-8 h-8 rounded-none border-2 border-black dark:border-white bg-[#FF6B6B] dark:bg-[#ff007f] flex items-center justify-center text-black dark:text-white shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] dark:shadow-[2px_2px_0px_0px_rgba(255,255,255,1)]">
-              <Sparkles className="w-4 h-4" />
-            </div>
-            <span className="font-black font-sans text-sm uppercase tracking-wider text-neutral-100">
+          <div className="flex items-center gap-2.5">
+            <img src="/logo.svg" alt="Kortex Logo" className="w-8 h-8 select-none" />
+            <span className="font-black font-sans text-sm uppercase tracking-wider text-black dark:text-neutral-100">
               KortexKeshav
             </span>
           </div>

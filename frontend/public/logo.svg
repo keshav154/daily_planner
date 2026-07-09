@@ -1,0 +1,18 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100" fill="none">
+  <!-- Outer shadow block -->
+  <rect x="14" y="14" width="72" height="72" fill="#000000" />
+  <!-- Main card panel -->
+  <rect x="10" y="10" width="72" height="72" fill="#FFFDF5" stroke="#000000" stroke-width="5" />
+  
+  <!-- Geometric Abstract K -->
+  <path d="M30 25 V75 H38 V54 L58 75 H68 L45 49 L68 25 H58 L38 44 V25 H30 Z" fill="#000000" />
+  
+  <!-- Intersecting synapse line -->
+  <line x1="34" y1="25" x2="68" y2="75" stroke="#ff007f" stroke-width="3.5" stroke-dasharray="5 4" />
+  
+  <!-- Neon Accent overlay dots / connections -->
+  <circle cx="34" cy="25" r="5" fill="#ff007f" stroke="#000000" stroke-width="2.5" />
+  <circle cx="68" cy="25" r="5" fill="#39ff14" stroke="#000000" stroke-width="2.5" />
+  <circle cx="68" cy="75" r="5" fill="#00ffff" stroke="#000000" stroke-width="2.5" />
+  <circle cx="34" cy="75" r="5" fill="#FFD93D" stroke="#000000" stroke-width="2.5" />
+</svg>
