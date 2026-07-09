@@ -196,3 +196,52 @@ html.light .border-white\/5 { border-color: #000000 !important; }
     min-height: 42px;
   }
 }
+
+/* ----------------------------------------------------
+   💎 BULLETPROOF BRUTALIST SUB-CONTAINER UTILITIES
+   ---------------------------------------------------- */
+
+.inner-card {
+  background-color: #ffffff !important;
+  border: 2px solid #000000 !important;
+  color: #000000 !important;
+}
+html.dark .inner-card {
+  background-color: #0a0a0a !important;
+  border: 2px solid #333333 !important;
+  color: #ffffff !important;
+}
+
+.inner-card-green {
+  background-color: #ecfdf5 !important;
+  border: 2px solid #000000 !important;
+  color: #000000 !important;
+}
+html.dark .inner-card-green {
+  background-color: rgba(6, 78, 59, 0.2) !important;
+  border: 2px solid #333333 !important;
+  color: #a7f3d0 !important;
+}
+
+.inner-card-violet {
+  background-color: #f3e8ff !important;
+  border: 2px solid #000000 !important;
+  color: #000000 !important;
+}
+html.dark .inner-card-violet {
+  background-color: rgba(49, 16, 66, 0.2) !important;
+  border: 2px solid #333333 !important;
+  color: #ddd6fe !important;
+}
+
+.inner-card-neutral {
+  background-color: #f5f5f5 !important;
+  border: 2px solid #000000 !important;
+  color: #000000 !important;
+}
+html.dark .inner-card-neutral {
+  background-color: #262626 !important;
+  border: 2px solid #333333 !important;
+  color: #ffffff !important;
+}
+

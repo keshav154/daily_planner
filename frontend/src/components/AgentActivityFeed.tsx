@@ -105,7 +105,7 @@ export const AgentActivityFeed: React.FC = () => {
               logs.map((logEntry, idx) => (
                 <div 
                   key={idx} 
-                  className="p-3 bg-white dark:bg-neutral-950/20 border-2 border-black dark:border-white rounded-none flex items-start gap-3 text-xs text-black dark:text-neutral-300"
+                  className="inner-card p-3 rounded-none flex items-start gap-3 text-xs"
                 >
                   <div className="mt-0.5 shrink-0">{getLogIcon(logEntry.type)}</div>
                   <div className="flex-1 space-y-1 min-w-0">
@@ -138,7 +138,7 @@ export const AgentActivityFeed: React.FC = () => {
               runs.map((run) => (
                 <div 
                   key={run._id} 
-                  className="p-3.5 bg-white dark:bg-neutral-950/40 border-2 border-black dark:border-white rounded-none space-y-2.5 text-xs text-black dark:text-neutral-300"
+                  className="inner-card p-3.5 rounded-none space-y-2.5 text-xs"
                 >
                   <div className="flex justify-between items-center pb-2 border-b border-black dark:border-white">
                     <span className="text-[10px] bg-[#C4B5FD] text-black border-2 border-black px-2 py-0.5 rounded-none font-black uppercase">
@@ -151,7 +151,7 @@ export const AgentActivityFeed: React.FC = () => {
 
                   <div className="space-y-1">
                     <div className="text-[9px] uppercase font-black text-neutral-500 dark:text-neutral-400">Agent Rationale</div>
-                    <p className="text-[11px] leading-relaxed font-sans font-bold text-black dark:text-neutral-300">{run.planOutput.rationale}</p>
+                    <p className="text-[11px] leading-relaxed font-sans font-bold">{run.planOutput.rationale}</p>
                   </div>
 
                   {run.planOutput.suggestions && run.planOutput.suggestions.length > 0 && (
@@ -159,7 +159,7 @@ export const AgentActivityFeed: React.FC = () => {
                       <div className="text-[9px] uppercase font-black text-neutral-500 dark:text-neutral-400">Generated Actions</div>
                       <div className="space-y-1">
                         {run.planOutput.suggestions.map((s, idx) => (
-                          <div key={idx} className="flex gap-1.5 items-start text-[10px] text-black dark:text-neutral-300 font-bold">
+                          <div key={idx} className="flex gap-1.5 items-start text-[10px] font-bold">
                             <ChevronRight className="w-3.5 h-3.5 text-indigo-600 dark:text-indigo-400 mt-0.5 shrink-0" />
                             <span>{s.description}</span>
                           </div>

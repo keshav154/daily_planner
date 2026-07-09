@@ -215,15 +215,15 @@ export const LogsView: React.FC = () => {
             </div>
           </div>
         ) : (
-          <div className="relative border-l border-white/5 pl-6 ml-3 space-y-6">
+          <div className="relative border-l-2 border-black dark:border-white pl-6 ml-3 space-y-6">
             {filteredLogs.map((log) => (
               <div key={log._id} className="relative group">
                 {/* Timeline node */}
-                <div className="absolute -left-[35px] top-1 w-4 h-4 bg-[#FFD93D] dark:bg-[#39ff14] border-2 border-black dark:border-white shadow-[1px_1px_0px_0px_rgba(0,0,0,1)]"></div>
+                <div className="absolute -left-[33px] top-1 w-4 h-4 bg-[#FFD93D] dark:bg-[#39ff14] border-2 border-black dark:border-white shadow-[1px_1px_0px_0px_rgba(0,0,0,1)]"></div>
                 
                 <div className="flex items-start justify-between gap-4">
                   <div>
-                    <span className="text-[10px] text-neutral-400 bg-neutral-900 px-2 py-0.5 rounded border border-white/5 font-semibold">
+                    <span className="text-[10px] text-black dark:text-neutral-300 bg-neutral-200 dark:bg-neutral-900 px-2 py-0.5 rounded-none border-2 border-black dark:border-white font-bold">
                       {new Date(log.timestamp).toLocaleDateString(undefined, { 
                         weekday: 'short', 
                         month: 'short', 
@@ -232,25 +232,25 @@ export const LogsView: React.FC = () => {
                         minute: '2-digit'
                       })}
                     </span>
-                    <h4 className="text-sm font-bold text-neutral-200 mt-1.5">{log.title}</h4>
+                    <h4 className="text-sm font-black text-black dark:text-neutral-200 mt-1.5">{log.title}</h4>
                     {log.notes && (
-                      <p className="text-xs text-neutral-400 mt-1 bg-neutral-900/50 p-2.5 rounded border border-white/5 max-w-2xl whitespace-pre-wrap leading-relaxed">
+                      <p className="text-xs text-black dark:text-neutral-300 mt-1 bg-white dark:bg-neutral-900/50 p-2.5 rounded-none border-2 border-black dark:border-white max-w-2xl whitespace-pre-wrap leading-relaxed font-bold">
                         {log.notes}
                       </p>
                     )}
                     {log.taskId && typeof log.taskId === 'object' && log.taskId.resolution && (
-                      <div className="mt-2 p-2.5 rounded-lg bg-emerald-950/10 border border-emerald-500/10 max-w-2xl space-y-1">
-                        <div className="flex items-center gap-1.5 text-[9px] font-bold text-emerald-400 uppercase tracking-wider">
+                      <div className="mt-2 p-2.5 rounded-none bg-[#ecfdf5] dark:bg-emerald-950/10 border-2 border-black dark:border-white max-w-2xl space-y-1">
+                        <div className="flex items-center gap-1.5 text-[9px] font-black text-emerald-600 dark:text-emerald-400 uppercase tracking-wider">
                           <span>🔧 Task Resolution Details</span>
                         </div>
-                        <p className="text-xs text-neutral-300 whitespace-pre-wrap leading-relaxed font-sans">
+                        <p className="text-xs text-black dark:text-neutral-300 whitespace-pre-wrap leading-relaxed font-bold font-sans">
                           {log.taskId.resolution}
                         </p>
                       </div>
                     )}
                   </div>
                   <div className="flex items-center gap-3">
-                    <span className="text-xs text-neutral-400 bg-neutral-900 px-2 py-1 rounded border border-white/5 flex items-center gap-1 font-semibold whitespace-nowrap">
+                    <span className="text-xs text-black dark:text-neutral-300 bg-neutral-200 dark:bg-neutral-900 px-2 py-1 rounded-none border-2 border-black dark:border-white flex items-center gap-1 font-bold whitespace-nowrap">
                       <Clock className="w-3.5 h-3.5" /> {log.duration} mins
                     </span>
                     <button

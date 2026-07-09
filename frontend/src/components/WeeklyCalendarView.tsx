@@ -251,20 +251,20 @@ export const WeeklyCalendarView: React.FC = () => {
             return (
               <div 
                 key={day.dateStr}
-                className={`glass-panel rounded-2xl p-4 flex flex-col h-full border hover:border-white/10 transition-all ${
-                  isCurr ? 'border-indigo-500/30 bg-indigo-950/5 relative shadow-lg shadow-indigo-500/[0.02]' : 'border-white/5'
+                className={`glass-panel p-4 flex flex-col h-full relative ${
+                  isCurr ? 'border-indigo-500 bg-indigo-950/10' : ''
                 }`}
               >
                 {/* Visual indicator for today */}
                 {isCurr && (
-                  <div className="absolute top-0 inset-x-0 h-1 bg-indigo-500 rounded-t-2xl"></div>
+                  <div className="absolute top-0 inset-x-0 h-1 bg-indigo-500"></div>
                 )}
 
                 {/* Day title */}
-                <div className="text-center border-b border-white/5 pb-2.5 mb-3.5 select-none">
-                  <p className="text-[10px] font-bold text-neutral-500 uppercase tracking-wide">{daysLabels[idx]}</p>
-                  <p className={`text-base font-extrabold font-sans mt-0.5 ${
-                    isCurr ? 'text-indigo-400' : 'text-neutral-200'
+                <div className="text-center border-b-2 border-black dark:border-white pb-2.5 mb-3.5 select-none">
+                  <p className="text-[10px] font-black text-neutral-500 dark:text-neutral-400 uppercase tracking-wide">{daysLabels[idx]}</p>
+                  <p className={`text-base font-black font-sans mt-0.5 ${
+                    isCurr ? 'text-indigo-600 dark:text-indigo-400' : 'text-black dark:text-neutral-200'
                   }`}>
                     {day.date.getDate()}
                   </p>
@@ -287,12 +287,12 @@ export const WeeklyCalendarView: React.FC = () => {
                     mergedTimeline.map((item: any) => (
                       <div
                         key={item._id}
-                        className={`p-2.5 rounded-xl border border-white/5 relative overflow-hidden transition-all text-left ${
+                        className={`p-2.5 rounded-none border-2 border-black dark:border-white relative overflow-hidden transition-all text-left ${
                           item.isEvent 
-                            ? 'bg-neutral-900/40 hover:bg-neutral-900/60' 
+                            ? 'bg-[#ecfdf5] dark:bg-emerald-950/20 text-black dark:text-neutral-200' 
                             : item.status === 'done' 
-                              ? 'bg-emerald-950/5 border-emerald-500/10 opacity-70' 
-                              : 'bg-indigo-950/5 border-indigo-500/10 hover:bg-indigo-950/10'
+                              ? 'bg-neutral-100 dark:bg-neutral-900/30 border-dashed opacity-60 text-neutral-500 dark:text-neutral-400' 
+                              : 'bg-[#f3e8ff] dark:bg-indigo-950/20 text-black dark:text-neutral-200'
                         }`}
                       >
                         {/* Event / Task type color indicator */}
@@ -303,25 +303,25 @@ export const WeeklyCalendarView: React.FC = () => {
 
                         <div className="pl-1.5">
                           <div className="flex items-start justify-between gap-1">
-                            <h4 className={`text-[11px] font-bold tracking-tight truncate leading-snug ${
+                            <h4 className={`text-[11px] font-black tracking-tight truncate leading-snug ${
                               !item.isEvent && item.status === 'done' 
                                 ? 'line-through text-neutral-500' 
-                                : 'text-neutral-200'
+                                : 'text-black dark:text-neutral-200'
                             }`}>
                               {item.title}
                             </h4>
                             {!item.isEvent && item.status === 'done' && (
-                              <Check className="w-3 h-3 text-emerald-400 shrink-0 mt-0.5" />
+                              <Check className="w-3 h-3 text-emerald-600 dark:text-emerald-400 shrink-0 mt-0.5" />
                             )}
                           </div>
                           
-                          <div className="flex items-center gap-1.5 mt-1 text-[8px] text-neutral-500 font-bold font-mono">
+                          <div className="flex items-center gap-1.5 mt-1 text-[8px] text-neutral-600 dark:text-neutral-400 font-black font-mono">
                             <span>{item.startTime}-{item.endTime}</span>
                             {item.isEvent ? (
-                              <span className="bg-neutral-950 px-1 rounded text-neutral-400 capitalize">Meeting</span>
+                              <span className="bg-neutral-200 dark:bg-neutral-950 px-1 rounded-none border border-black dark:border-white text-black dark:text-neutral-400 capitalize">Meeting</span>
                             ) : (
-                              <span className={`px-1 rounded uppercase ${
-                                item.priority === 'high' ? 'bg-red-950/30 text-red-400' : 'bg-neutral-950 text-neutral-400'
+                              <span className={`px-1 rounded-none border border-black dark:border-white uppercase ${
+                                item.priority === 'high' ? 'bg-red-200 dark:bg-red-950/30 text-red-700 dark:text-red-400' : 'bg-neutral-200 dark:bg-neutral-950 text-black dark:text-neutral-400'
                               }`}>
                                 {item.priority}
                               </span>

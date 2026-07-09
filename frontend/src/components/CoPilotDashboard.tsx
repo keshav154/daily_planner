@@ -204,18 +204,18 @@ export const CoPilotDashboard: React.FC = () => {
                 {memories.map((m) => (
                   <div
                     key={m._id}
-                    className="glass-panel p-4 rounded-xl border border-white/5 flex items-start justify-between gap-4"
+                    className="glass-panel p-4 flex items-start justify-between gap-4"
                   >
                     <div className="space-y-1.5 flex-1 min-w-0">
                       <div className="flex items-center gap-2">
-                        <span className="text-[9px] font-bold bg-indigo-500/10 text-indigo-400 px-2 py-0.5 rounded-full border border-indigo-500/10 uppercase">
+                        <span className="text-[9px] font-black bg-[#C4B5FD] text-black px-2 py-0.5 rounded-none border-2 border-black uppercase shadow-[1px_1px_0px_0px_rgba(0,0,0,1)]">
                           {m.type}
                         </span>
-                        <span className="text-[9px] font-bold bg-neutral-800 text-neutral-400 px-2 py-0.5 rounded-full border border-white/5 uppercase">
+                        <span className="text-[9px] font-black bg-[#FFD93D] text-black px-2 py-0.5 rounded-none border-2 border-black uppercase shadow-[1px_1px_0px_0px_rgba(0,0,0,1)]">
                           {m.category}
                         </span>
                       </div>
-                      <p className="text-xs text-neutral-200 leading-relaxed font-sans">{m.content}</p>
+                      <p className="text-xs text-black dark:text-neutral-200 leading-relaxed font-bold font-sans">{m.content}</p>
                     </div>
 
                     <div className="flex items-center gap-2 shrink-0">
@@ -223,23 +223,23 @@ export const CoPilotDashboard: React.FC = () => {
                         <>
                           <button
                             onClick={() => handleUpdateMemoryFeedback(m._id, 'accepted')}
-                            className="p-1.5 bg-emerald-500/10 hover:bg-emerald-500 text-emerald-400 hover:text-white rounded-lg border border-emerald-500/10 transition-all cursor-pointer text-[10px] font-bold"
+                            className="px-2.5 py-1 bg-[#39ff14] text-black font-black text-[10px] rounded-none border-2 border-black cursor-pointer shadow-[1px_1px_0px_0px_rgba(0,0,0,1)] active:translate-x-[1px] active:translate-y-[1px] active:shadow-none"
                           >
                             Approve
                           </button>
                           <button
                             onClick={() => handleUpdateMemoryFeedback(m._id, 'rejected')}
-                            className="p-1.5 bg-red-500/10 hover:bg-red-500 text-red-400 hover:text-white rounded-lg border border-red-500/10 transition-all cursor-pointer text-[10px] font-bold"
+                            className="px-2.5 py-1 bg-[#FF6B6B] text-black font-black text-[10px] rounded-none border-2 border-black cursor-pointer shadow-[1px_1px_0px_0px_rgba(0,0,0,1)] active:translate-x-[1px] active:translate-y-[1px] active:shadow-none"
                           >
                             Reject
                           </button>
                         </>
                       ) : m.feedback === 'accepted' ? (
-                        <span className="text-[10px] text-emerald-400 font-semibold flex items-center gap-1">
+                        <span className="text-[10px] text-emerald-600 dark:text-emerald-400 font-black flex items-center gap-1 uppercase">
                           <CheckCircle className="w-3.5 h-3.5" /> Approved
                         </span>
                       ) : (
-                        <span className="text-[10px] text-red-400 font-semibold flex items-center gap-1">
+                        <span className="text-[10px] text-red-600 dark:text-red-400 font-black flex items-center gap-1 uppercase">
                           <Trash2 className="w-3.5 h-3.5" /> Discarded
                         </span>
                       )}
