@@ -475,7 +475,7 @@ export const TodayView: React.FC = () => {
       <DailyBriefingCard />
 
       {/* Daily Standup Card */}
-      <div className="glass-panel rounded-xl p-4 shadow-md border border-white/5 space-y-3">
+      <div className="glass-panel p-4 space-y-3">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2">
             <div className="w-7 h-7 rounded-lg bg-emerald-600/10 text-emerald-400 flex items-center justify-center border border-emerald-500/20">
@@ -509,7 +509,7 @@ export const TodayView: React.FC = () => {
               <>
                 <textarea
                   readOnly
-                  className="w-full h-32 px-3 py-2.5 rounded-lg text-xs text-neutral-300 font-mono bg-neutral-950/40 border border-white/5 focus:outline-none resize-none leading-relaxed"
+                  className="w-full h-32 px-3 py-2.5 rounded-none text-xs font-mono bg-white dark:bg-neutral-950/40 border-2 border-black dark:border-white text-black dark:text-neutral-300 focus:outline-none resize-none leading-relaxed"
                   value={standupDraft}
                 />
                 <div className="flex justify-end">
@@ -520,10 +520,10 @@ export const TodayView: React.FC = () => {
                       setCopiedStandup(true);
                       setTimeout(() => setCopiedStandup(false), 2000);
                     }}
-                    className={`px-4 py-2 font-bold text-xs rounded-lg cursor-pointer transition-all duration-200 ${
+                    className={`px-4 py-2 font-black text-xs rounded-none border-2 border-black dark:border-white cursor-pointer transition-all duration-100 shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] active:translate-x-[1px] active:translate-y-[1px] active:shadow-none ${
                       copiedStandup 
-                        ? 'bg-emerald-600 text-white' 
-                        : 'bg-indigo-600 hover:bg-indigo-500 text-white shadow-md shadow-indigo-600/20'
+                        ? 'bg-[#39ff14] text-black' 
+                        : 'bg-[#FF6B6B] dark:bg-[#ff007f] text-black dark:text-white'
                     }`}
                   >
                     {copiedStandup ? 'Copied to Clipboard! ✓' : 'Copy Status Message'}
@@ -662,7 +662,7 @@ export const TodayView: React.FC = () => {
           {viewMode === 'calendar' ? (
             <TimeBlockingGrid tasks={tasks} onTaskUpdated={fetchTodayData} />
           ) : (
-            <div className="glass-panel rounded-xl p-6 shadow-xl">
+            <div className="glass-panel p-6">
               <div className="flex items-center justify-between mb-4 border-b border-white/5 pb-3">
                 <h2 className="text-lg font-bold text-neutral-100">Tasks Checklist</h2>
                 <span className="text-xs text-neutral-400 font-semibold bg-neutral-900 px-2 py-1 rounded-md">
@@ -892,28 +892,28 @@ export const TodayView: React.FC = () => {
 
                           {/* Task Resolution Info (If already complete) */}
                           {task.status === 'done' && task.resolution && (
-                            <div className="mt-3 p-3 rounded-lg bg-emerald-950/20 border border-emerald-500/10 space-y-1">
-                              <div className="flex items-center gap-1.5 text-[10px] font-bold text-emerald-400 uppercase tracking-wider">
+                            <div className="mt-3 p-3 rounded-none bg-[#ecfdf5] dark:bg-emerald-950/20 border-2 border-black dark:border-white space-y-1">
+                              <div className="flex items-center gap-1.5 text-[10px] font-black text-emerald-600 dark:text-emerald-400 uppercase tracking-wider">
                                 <Check className="w-3.5 h-3.5" />
                                 <span>Solution Logged</span>
                               </div>
-                              <p className="text-xs text-neutral-300 whitespace-pre-wrap leading-relaxed">
+                              <p className="text-xs text-black dark:text-neutral-300 whitespace-pre-wrap leading-relaxed">
                                 {task.resolution}
                               </p>
                             </div>
                           )}
 
                           {/* Context Synapses */}
-                          <div className="mt-3.5 pt-3 border-t border-white/5 space-y-2">
-                            <div className="flex items-center gap-1.5 text-[10px] font-bold text-indigo-400 uppercase tracking-wider">
+                          <div className="mt-3.5 pt-3 border-t border-black dark:border-white space-y-2">
+                            <div className="flex items-center gap-1.5 text-[10px] font-black text-indigo-600 dark:text-indigo-400 uppercase tracking-wider">
                               <Sparkles className="w-3.5 h-3.5 animate-pulse" />
                               <span>🧠 Context Synapses</span>
                             </div>
                             
                             {loadingContexts[task._id] ? (
-                              <p className="text-[10px] text-neutral-500 animate-pulse">Querying second brain...</p>
+                              <p className="text-[10px] text-neutral-500 animate-pulse font-bold">Querying second brain...</p>
                             ) : !taskContexts[task._id] || taskContexts[task._id].length === 0 ? (
-                              <p className="text-[10px] text-neutral-600 italic">No direct context links found.</p>
+                              <p className="text-[10px] text-neutral-500 italic font-bold">No direct context links found.</p>
                             ) : (
                               <div className="space-y-2">
                                 {taskContexts[task._id].map((mem: any, mIdx: number) => {
@@ -921,17 +921,17 @@ export const TodayView: React.FC = () => {
                                   return (
                                     <div 
                                       key={mIdx} 
-                                      className={`p-2.5 rounded-lg text-xs leading-relaxed space-y-1 border ${
+                                      className={`p-2.5 rounded-none text-xs leading-relaxed space-y-1 border-2 border-black dark:border-white ${
                                         isResolution 
-                                          ? 'bg-emerald-950/10 border-emerald-500/10 text-neutral-300' 
-                                          : 'bg-neutral-900/50 border-white/5 text-neutral-300'
+                                          ? 'bg-[#ecfdf5] dark:bg-emerald-950/20 text-black dark:text-neutral-200' 
+                                          : 'bg-[#f3e8ff] dark:bg-neutral-900/40 text-black dark:text-neutral-200'
                                       }`}
                                     >
-                                      <div className="flex items-center gap-1 text-[9px] font-bold uppercase tracking-wider text-neutral-500">
+                                      <div className="flex items-center gap-1 text-[9px] font-black uppercase tracking-wider">
                                         {isResolution ? (
-                                          <span className="text-emerald-400">🔧 Resolved Past Task</span>
+                                          <span className="text-emerald-600 dark:text-emerald-400">🔧 Resolved Past Task</span>
                                         ) : (
-                                          <span className="text-indigo-400">📖 Reference Note</span>
+                                          <span className="text-indigo-600 dark:text-indigo-400">📖 Reference Note</span>
                                         )}
                                       </div>
                                       <p className="font-sans whitespace-pre-wrap">{mem.content}</p>
@@ -955,7 +955,7 @@ export const TodayView: React.FC = () => {
         <div className="space-y-6">
           {/* Focus Timer */}
           <PomodoroTimer tasks={tasks} onTimerComplete={handleTimerComplete} />
-          <div className="glass-panel rounded-xl p-6 shadow-xl relative overflow-hidden">
+          <div className="glass-panel p-6 relative overflow-hidden">
             {/* Background pattern */}
             <div className="absolute top-0 right-0 w-24 h-24 bg-indigo-500/5 rounded-full blur-2xl pointer-events-none"></div>
 

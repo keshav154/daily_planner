@@ -79,6 +79,12 @@ router.post('/login', async (req: Request, res: Response) => {
       return res.status(401).json({ error: 'Invalid email or password' });
     }
 
+    // Auto-generate apiKey if missing for legacy users on login
+    if (!user.apiKey) {
+      user.apiKey = 'kt_live_' + require('crypto').randomBytes(24).toString('hex');
+      await user.save();
+    }
+
     const secret = process.env.JWT_SECRET || 'dev_jwt_secret_key_daily_planner_agent_2026';
     const token = jwt.sign({ userId: user._id }, secret, { expiresIn: '7d' });
 
@@ -107,6 +113,13 @@ router.get('/me', authenticateToken, async (req: AuthRequest, res: Response) => 
     if (!user) {
       return res.status(404).json({ error: 'User not found' });
     }
+
+    // Auto-generate apiKey if missing for legacy users on profile retrieval
+    if (!user.apiKey) {
+      user.apiKey = 'kt_live_' + require('crypto').randomBytes(24).toString('hex');
+      await user.save();
+    }
+
     res.json(user);
   } catch (error: any) {
     console.error('Get profile error:', error);

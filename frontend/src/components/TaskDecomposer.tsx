@@ -81,18 +81,18 @@ export const TaskDecomposer: React.FC = () => {
   };
 
   const priorityConfig = {
-    high: { label: 'High', classes: 'bg-red-500/10 text-red-400 border border-red-500/20' },
-    medium: { label: 'Medium', classes: 'bg-amber-500/10 text-amber-400 border border-amber-500/20' },
-    low: { label: 'Low', classes: 'bg-blue-500/10 text-blue-400 border border-blue-500/20' },
+    high: { label: 'High', classes: 'bg-[#FF6B6B] text-black border-2 border-black font-extrabold uppercase' },
+    medium: { label: 'Medium', classes: 'bg-[#FFD93D] text-black border-2 border-black font-extrabold uppercase' },
+    low: { label: 'Low', classes: 'bg-[#C4B5FD] text-black border-2 border-black font-extrabold uppercase' },
   };
 
   return (
     <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
       {/* Left: Input Panel */}
-      <div className="glass-panel rounded-2xl p-6 shadow-xl space-y-5">
+      <div className="glass-panel p-6 shadow-xl space-y-5">
         <div className="flex items-center gap-2 border-b border-white/5 pb-3">
-          <div className="w-8 h-8 rounded-lg bg-indigo-600/20 flex items-center justify-center border border-indigo-500/20">
-            <Layers className="w-4 h-4 text-indigo-400" />
+          <div className="w-8 h-8 rounded-none bg-[#C4B5FD] text-black flex items-center justify-center border-2 border-black dark:border-white shadow-[1px_1px_0px_0px_rgba(0,0,0,1)]">
+            <Layers className="w-4 h-4" />
           </div>
           <div>
             <h2 className="text-sm font-bold text-neutral-100 uppercase tracking-wider">Task Decomposer</h2>
@@ -109,14 +109,14 @@ export const TaskDecomposer: React.FC = () => {
             placeholder="Describe a goal or project, e.g. Prepare Q3 performance review"
             value={goal}
             onChange={e => setGoal(e.target.value)}
-            className="w-full px-4 py-3 rounded-xl text-sm glass-input text-neutral-100 resize-none placeholder-neutral-600 leading-relaxed"
+            className="w-full px-4 py-3 rounded-none text-sm glass-input text-neutral-100 resize-none placeholder-neutral-600 leading-relaxed"
           />
         </div>
 
         <button
           onClick={handleDecompose}
           disabled={loading || !goal.trim()}
-          className="w-full py-3 px-4 bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 text-white font-semibold text-sm rounded-xl cursor-pointer transition-all duration-200 flex items-center justify-center gap-2 shadow-lg shadow-indigo-600/20"
+          className="w-full py-3 px-4 bg-[#FFD93D] dark:bg-[#39ff14] text-black font-black text-sm rounded-none cursor-pointer border-2 border-black dark:border-white shadow-[3px_3px_0px_0px_rgba(0,0,0,1)] dark:shadow-[3px_3px_0px_0px_rgba(255,255,255,1)] active:translate-x-[2px] active:translate-y-[2px] active:shadow-none transition-all duration-100 flex items-center justify-center gap-2"
         >
           {loading ? (
             <>
@@ -139,7 +139,7 @@ export const TaskDecomposer: React.FC = () => {
       </div>
 
       {/* Right: Results Panel */}
-      <div className="glass-panel rounded-2xl p-6 shadow-xl flex flex-col min-h-[400px]">
+      <div className="glass-panel p-6 shadow-xl flex flex-col min-h-[400px]">
         <div className="flex items-center justify-between border-b border-white/5 pb-3 mb-4">
           <h3 className="text-sm font-bold text-neutral-100 uppercase tracking-wider">
             Decomposed Tasks
@@ -167,7 +167,7 @@ export const TaskDecomposer: React.FC = () => {
                 return (
                   <div
                     key={idx}
-                    className="glass-panel rounded-xl p-4 border border-white/5 hover:border-white/10 transition-all space-y-3"
+                    className="glass-panel p-4 space-y-3"
                   >
                     <div className="flex items-start justify-between gap-2">
                       <p className="text-sm font-semibold text-neutral-200 leading-snug flex-1">
@@ -186,11 +186,11 @@ export const TaskDecomposer: React.FC = () => {
                       <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${pConf.classes}`}>
                         {pConf.label}
                       </span>
-                      <span className="text-[10px] text-neutral-400 bg-neutral-900 px-2 py-0.5 rounded border border-white/5">
+                      <span className="text-[10px] text-neutral-400 bg-neutral-900 px-2 py-0.5 rounded-none border-2 border-black font-bold">
                         {task.estimatedTime}m
                       </span>
                       {task.category && (
-                        <span className="text-[10px] text-neutral-400 bg-neutral-900 px-2 py-0.5 rounded border border-white/5">
+                        <span className="text-[10px] text-neutral-400 bg-neo-muted/20 px-2 py-0.5 rounded-none border-2 border-black font-bold">
                           {task.category}
                         </span>
                       )}
@@ -198,7 +198,7 @@ export const TaskDecomposer: React.FC = () => {
 
                     <button
                       onClick={() => handleAddToToday(task)}
-                      className="w-full py-1.5 px-3 bg-indigo-600/20 hover:bg-indigo-600/30 text-indigo-300 font-semibold text-[11px] rounded-lg cursor-pointer border border-indigo-500/20 transition-colors flex items-center justify-center gap-1.5"
+                      className="w-full py-1.5 px-3 bg-[#FF6B6B] dark:bg-[#ff007f] text-white font-extrabold text-[11px] rounded-none border-2 border-black cursor-pointer shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] active:translate-x-[1px] active:translate-y-[1px] active:shadow-none transition-all duration-100 flex items-center justify-center gap-1.5"
                     >
                       <Plus className="w-3.5 h-3.5" />
                       Add to Today
@@ -212,7 +212,7 @@ export const TaskDecomposer: React.FC = () => {
               <button
                 onClick={handleAddAll}
                 disabled={addingAll}
-                className="w-full py-3 px-4 bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 text-white font-semibold text-sm rounded-xl cursor-pointer transition-all flex items-center justify-center gap-2 shadow-lg shadow-indigo-600/20"
+                className="w-full py-3 px-4 bg-[#FF6B6B] dark:bg-[#ff007f] text-white font-black text-sm rounded-none border-2 border-black dark:border-white shadow-[3px_3px_0px_0px_rgba(0,0,0,1)] dark:shadow-[3px_3px_0px_0px_rgba(255,255,255,1)] cursor-pointer active:translate-x-[2px] active:translate-y-[2px] active:shadow-none transition-all duration-100 flex items-center justify-center gap-2 disabled:opacity-50"
               >
                 {addingAll ? (
                   <Loader2 className="w-4 h-4 animate-spin" />
