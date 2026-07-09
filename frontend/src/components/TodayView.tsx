@@ -4,7 +4,7 @@ import { useAuth } from '../context/AuthContext';
 import { 
   Sparkles, Clock, CheckCircle2, Circle, AlertCircle, 
   ChevronUp, ChevronDown, Trash2, Check, X, Tag, CornerDownRight, Zap,
-  ListTodo, CalendarRange, ChevronRight, Mic, Briefcase, Home
+  ListTodo, CalendarRange, ChevronRight, Mic, Briefcase, Home, MessageSquare
 } from 'lucide-react';
 import { motion } from 'framer-motion';
 import { TimeBlockingGrid } from './TimeBlockingGrid';
@@ -58,6 +58,24 @@ export const TodayView: React.FC = () => {
   const [nlpText, setNlpText] = useState('');
   const [nlpParsing, setNlpParsing] = useState(false);
   const [planRunning, setPlanRunning] = useState(false);
+  
+  // Daily Standup States
+  const [standupDraft, setStandupDraft] = useState('');
+  const [loadingStandup, setLoadingStandup] = useState(false);
+  const [showStandup, setShowStandup] = useState(false);
+  const [copiedStandup, setCopiedStandup] = useState(false);
+
+  const fetchStandupDraft = async () => {
+    setLoadingStandup(true);
+    try {
+      const res = await api.get('/ai/daily-standup');
+      setStandupDraft(res.data.standup);
+    } catch (err) {
+      console.error('Failed to fetch standup:', err);
+    } finally {
+      setLoadingStandup(false);
+    }
+  };
 
   const handleToggleWorkMode = async () => {
     if (!user) return;
@@ -430,6 +448,68 @@ export const TodayView: React.FC = () => {
   return (
     <div className="space-y-6">
       <DailyBriefingCard />
+
+      {/* Daily Standup Card */}
+      <div className="glass-panel rounded-xl p-4 shadow-md border border-white/5 space-y-3">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <div className="w-7 h-7 rounded-lg bg-emerald-600/10 text-emerald-400 flex items-center justify-center border border-emerald-500/20">
+              <MessageSquare className="w-3.5 h-3.5" />
+            </div>
+            <div>
+              <h3 className="text-xs font-bold text-neutral-200 uppercase tracking-wider">Slack/Teams Standup Draft</h3>
+              <p className="text-[10px] text-neutral-500 font-semibold">AI-generated status report of your SRE work</p>
+            </div>
+          </div>
+          <button
+            type="button"
+            onClick={() => {
+              const nextShow = !showStandup;
+              setShowStandup(nextShow);
+              if (nextShow && !standupDraft) {
+                fetchStandupDraft();
+              }
+            }}
+            className="px-3 py-1 bg-neutral-900 hover:bg-neutral-800 text-neutral-300 border border-white/5 font-semibold text-[10px] uppercase rounded-md cursor-pointer transition-colors"
+          >
+            {showStandup ? 'Collapse' : 'Generate Standup'}
+          </button>
+        </div>
+
+        {showStandup && (
+          <div className="pt-2 border-t border-white/5 space-y-3">
+            {loadingStandup ? (
+              <p className="text-xs text-neutral-500 animate-pulse py-2">Synthesizing SRE work updates...</p>
+            ) : (
+              <>
+                <textarea
+                  readOnly
+                  className="w-full h-32 px-3 py-2.5 rounded-lg text-xs text-neutral-300 font-mono bg-neutral-950/40 border border-white/5 focus:outline-none resize-none leading-relaxed"
+                  value={standupDraft}
+                />
+                <div className="flex justify-end">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      navigator.clipboard.writeText(standupDraft);
+                      setCopiedStandup(true);
+                      setTimeout(() => setCopiedStandup(false), 2000);
+                    }}
+                    className={`px-4 py-2 font-bold text-xs rounded-lg cursor-pointer transition-all duration-200 ${
+                      copiedStandup 
+                        ? 'bg-emerald-600 text-white' 
+                        : 'bg-indigo-600 hover:bg-indigo-500 text-white shadow-md shadow-indigo-600/20'
+                    }`}
+                  >
+                    {copiedStandup ? 'Copied to Clipboard! ✓' : 'Copy Status Message'}
+                  </button>
+                </div>
+              </>
+            )}
+          </div>
+        )}
+      </div>
+
       {/* Header bar */}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>

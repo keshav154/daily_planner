@@ -343,6 +343,61 @@ export interface ReflectionResult {
   }>;
 }
 
+async function calculateEstimationBiases(userId: string) {
+  try {
+    const completedTasks = await Task.find({
+      userId,
+      status: 'done',
+      estimatedTime: { $gt: 0 },
+      actualTime: { $gt: 0 }
+    })
+    .sort({ updatedAt: -1 })
+    .limit(15);
+
+    if (completedTasks.length < 3) return;
+
+    const categoryStats: Record<string, { totalActual: number; totalEst: number; count: number }> = {};
+    for (const t of completedTasks) {
+      const cat = t.category || 'Work';
+      if (!categoryStats[cat]) {
+        categoryStats[cat] = { totalActual: 0, totalEst: 0, count: 0 };
+      }
+      categoryStats[cat].totalActual += t.actualTime;
+      categoryStats[cat].totalEst += t.estimatedTime;
+      categoryStats[cat].count += 1;
+    }
+
+    for (const [cat, stats] of Object.entries(categoryStats)) {
+      if (stats.count >= 2) {
+        const factor = stats.totalActual / stats.totalEst;
+        if (factor < 0.85 || factor > 1.15) {
+          const roundedFactor = Math.round(factor * 100) / 100;
+          
+          await AgentMemory.deleteMany({
+            userId,
+            category: 'Estimation Bias',
+            content: new RegExp(`^Estimation Bias for ${cat} tasks`, 'i')
+          });
+
+          const biasMemory = new AgentMemory({
+            userId,
+            type: 'pattern',
+            category: 'Estimation Bias',
+            content: `Estimation Bias for ${cat} tasks: factor ${roundedFactor} (Based on analysis of ${stats.count} tasks)`,
+            feedback: 'accepted',
+            importance: 8,
+            source: 'reflection'
+          });
+          await biasMemory.save();
+          console.log(`[Estimation Bias Loop] Set factor ${roundedFactor} for ${cat} tasks`);
+        }
+      }
+    }
+  } catch (err) {
+    console.error('Failed to compute estimation biases:', err);
+  }
+}
+
 export const runReflectionLoop = async (
   userId: string,
   targetDateStr?: string
@@ -420,6 +475,9 @@ Return ONLY a JSON object matching this schema, no other text:
       savedMemories.push(memory);
     }
 
+    // Run estimation bias reinforcement learning loop
+    await calculateEstimationBiases(userId);
+
     return {
       summary: reflection.reflectionSummary,
       insights: savedMemories
@@ -479,6 +537,9 @@ const runMockReflection = async (userId: string, context: any) => {
     await memory.save();
     savedMemories.push(memory);
   }
+
+  // Run estimation bias reinforcement learning loop
+  await calculateEstimationBiases(userId);
 
   return {
     summary,

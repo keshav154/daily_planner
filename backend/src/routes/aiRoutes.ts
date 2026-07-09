@@ -884,4 +884,105 @@ Format your output strictly as a JSON object containing two keys: "tasks" (array
   }
 });
 
+// GET /daily-standup
+router.get('/daily-standup', async (req: Request, res: Response) => {
+  try {
+    const authReq = req as any;
+    const userId = authReq.userId;
+    if (!userId) {
+      return res.status(401).json({ error: 'Unauthorized' });
+    }
+
+    const now = new Date();
+    const yesterday = new Date(now.getTime() - 24 * 60 * 60 * 1000);
+
+    // 1. Fetch completed tasks/logs from yesterday (done or logged in the last 24h)
+    const completedTasks = await Task.find({
+      userId,
+      status: 'done',
+      updatedAt: { $gte: yesterday }
+    });
+
+    const completedLogs = await Log.find({
+      userId,
+      timestamp: { $gte: yesterday }
+    });
+
+    // 2. Fetch planned tasks for today
+    const todayStr = now.toISOString().split('T')[0];
+    const startOfDay = new Date(`${todayStr}T00:00:00.000Z`);
+    const endOfDay = new Date(`${todayStr}T23:59:59.999Z`);
+    const todayTasks = await Task.find({
+      userId,
+      status: { $in: ['todo', 'in-progress'] },
+      $or: [
+        { dueDate: { $gte: startOfDay, $lte: endOfDay } },
+        { dueDate: { $lt: startOfDay } } // overdue items
+      ]
+    });
+
+    // 3. Fetch active blockers (overdue high priority tasks)
+    const blockers = todayTasks.filter(t => t.priority === 'high' && new Date(t.dueDate) < startOfDay);
+
+    // Prompt LLM to format a standup
+    const context = {
+      completedTasks: completedTasks.map(t => t.title),
+      completedLogs: completedLogs.map(l => l.title),
+      todayTasks: todayTasks.map(t => t.title),
+      blockers: blockers.map(t => t.title)
+    };
+
+    const prompt = `You are an expert SRE daily planner assistant. Write a clean, professional, and well-structured Slack/Teams daily standup status message based on this work context:
+${JSON.stringify(context, null, 2)}
+
+Format guidelines:
+- Use clear bullet points and simple emojis (e.g. ✅ Yesterday, 🚀 Today, ⚠️ Blockers).
+- Keep it concise, professional, and easy to read.
+- If blockers are empty, say "None." under Blockers.
+- Adjust phrasing so it sounds natural, like an engineer wrote it.
+
+Output ONLY the formatted Markdown standup message text, no other greeting or wrap-up text.`;
+
+    let standupText = '';
+    const nvidiaKey = process.env.NVIDIA_API_KEY;
+    const isNvidiaActive = nvidiaKey && nvidiaKey !== 'your_nvidia_api_key_here';
+    const client = getAnthropicClient();
+
+    if (isNvidiaActive) {
+      const response = await queryNvidiaNim([
+        { role: 'user', content: prompt }
+      ], process.env.NVIDIA_MODEL || 'meta/llama-3.1-70b-instruct', 0.3, 800);
+      standupText = response || '';
+    } else if (client) {
+      const response = await client.messages.create({
+        model: 'claude-3-5-sonnet-20241022',
+        max_tokens: 800,
+        messages: [{ role: 'user', content: prompt }]
+      });
+      standupText = response.content[0].type === 'text' ? response.content[0].text : '';
+    }
+
+    if (!standupText || !standupText.trim()) {
+      // Offline fallback formatting
+      const completedList = context.completedTasks.length > 0 ? context.completedTasks : ['No tasks logged.'];
+      const todayList = context.todayTasks.length > 0 ? context.todayTasks : ['No tasks scheduled.'];
+      const blockerList = context.blockers.length > 0 ? context.blockers : ['None.'];
+
+      standupText = `*✅ Yesterday / Completed:*
+${completedList.map(t => `- ${t}`).join('\n')}
+
+*🚀 Today / Priorities:*
+${todayList.map(t => `- ${t}`).join('\n')}
+
+*⚠️ Blockers / Overdue:*
+${blockerList.map(t => `- ${t}`).join('\n')}`;
+    }
+
+    res.json({ standup: standupText.trim() });
+  } catch (error: any) {
+    console.error('Standup generation failed:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
 export default router;

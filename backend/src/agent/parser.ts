@@ -1,5 +1,6 @@
 import Anthropic from '@anthropic-ai/sdk';
 import { queryNvidiaNim } from '../config/nvidia';
+import { AgentMemory } from '../models/Schemas';
 
 export interface ParsedTaskResult {
   title: string;
@@ -18,6 +19,29 @@ const getAnthropicClient = (): Anthropic | null => {
   }
   return new Anthropic({ apiKey });
 };
+
+// Helper to apply estimation bias learning factor
+async function applyEstimationBias(task: ParsedTaskResult, userId: string) {
+  try {
+    const biasMemory = await AgentMemory.findOne({
+      userId,
+      category: 'Estimation Bias',
+      content: new RegExp(`Estimation Bias for ${task.category || 'Work'} tasks`, 'i')
+    });
+
+    if (biasMemory) {
+      const factorMatch = biasMemory.content.match(/factor\s+([\d.]+)/i);
+      if (factorMatch) {
+        const factor = parseFloat(factorMatch[1]);
+        const oldEst = task.estimatedTime;
+        task.estimatedTime = Math.max(5, Math.round(task.estimatedTime * factor));
+        console.log(`[Estimation Bias Parser] Adjusted estimatedTime from ${oldEst}m to ${task.estimatedTime}m (factor: ${factor})`);
+      }
+    }
+  } catch (err) {
+    console.error('Failed to apply estimation bias:', err);
+  }
+}
 
 // Fallback Parser if Claude is offline/unconfigured
 export const parseFallback = (text: string): ParsedTaskResult => {
@@ -87,14 +111,19 @@ export const parseFallback = (text: string): ParsedTaskResult => {
 // Claude or NVIDIA NIM-based Natural Language Task Parser
 export const parseNaturalLanguageTask = async (
   text: string,
-  timezone: string = 'UTC'
+  timezone: string = 'UTC',
+  userId?: string
 ): Promise<ParsedTaskResult> => {
   const nvidiaKey = process.env.NVIDIA_API_KEY;
   const isNvidiaActive = nvidiaKey && nvidiaKey !== 'your_nvidia_api_key_here';
   const client = getAnthropicClient();
   
   if (!client && !isNvidiaActive) {
-    return parseFallback(text);
+    const result = parseFallback(text);
+    if (userId) {
+      await applyEstimationBias(result, userId);
+    }
+    return result;
   }
 
   const currentLocalTime = new Date().toISOString();
@@ -144,9 +173,16 @@ Format output as raw JSON only. Do not wrap in markdown \`\`\`json block.`;
     }
     
     const parsed: ParsedTaskResult = JSON.parse(cleanJson.trim());
+    if (userId) {
+      await applyEstimationBias(parsed, userId);
+    }
     return parsed;
   } catch (error) {
     console.error('LLM API failed to parse task. Using fallback parser.', error);
-    return parseFallback(text);
+    const result = parseFallback(text);
+    if (userId) {
+      await applyEstimationBias(result, userId);
+    }
+    return result;
   }
 };

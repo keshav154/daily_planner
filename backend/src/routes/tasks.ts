@@ -138,7 +138,7 @@ router.post('/quick-add', authenticateToken, async (req: AuthRequest, res: Respo
       return res.status(400).json({ error: 'Text query is required' });
     }
 
-    const parsedTask = await parseNaturalLanguageTask(text, timezone || 'UTC');
+    const parsedTask = await parseNaturalLanguageTask(text, timezone || 'UTC', req.userId);
     res.json(parsedTask);
   } catch (error: any) {
     console.error('Quick add parsing error:', error);

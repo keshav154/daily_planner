@@ -3,6 +3,7 @@ import { Goal } from '../models/Goal';
 import Habit from '../models/Habit';
 import { queryNvidiaNim } from '../config/nvidia';
 import { getRelevantMemories } from './similarity';
+import { searchSreResources } from './webSearch';
 import Anthropic from '@anthropic-ai/sdk';
 import mongoose from 'mongoose';
 
@@ -92,6 +93,49 @@ export const runAutonomousAgentLoop = async (userId: string, trigger: string = '
         atRisk
       };
     });
+
+    // Research SRE/Learning goals autonomously in the background
+    for (const g of activeGoals) {
+      const titleLower = g.title.toLowerCase();
+      const isLearningGoal = ['learn', 'study', 'prepare', 'cert', 'exam', 'k8s', 'kubernetes', 'terraform', 'aws', 'docker', 'prometheus', 'grafana', 'ansible'].some(kw => titleLower.includes(kw));
+
+      if (isLearningGoal) {
+        try {
+          const existingRef = await AgentMemory.findOne({
+            userId,
+            category: 'Tech Reference',
+            content: new RegExp(g.title, 'i')
+          });
+
+          if (!existingRef) {
+            console.log(`[Knowledge Loop] Autonomously researching SRE topic for Goal: "${g.title}"`);
+            const searchResult = await searchSreResources(g.title);
+            
+            const memoryContent = `### Technology Reference for Goal: "${g.title}"
+Source: ${searchResult.sourceUrl || 'Web'}
+
+${searchResult.content}`;
+
+            const refMemory = new AgentMemory({
+              userId,
+              type: 'preference',
+              category: 'Tech Reference',
+              content: memoryContent,
+              feedback: 'accepted',
+              importance: 7,
+              source: 'autonomous'
+            });
+            await refMemory.save();
+            
+            g.agentNotes.push(`[Autonomous Research] Added technology reference cheat-sheet: "${searchResult.title}" to your memory vault.`);
+            await g.save();
+            console.log(`[Knowledge Loop] Saved SRE reference for "${g.title}"`);
+          }
+        } catch (searchErr) {
+          console.error('[Knowledge Loop] Failed to research topic:', searchErr);
+        }
+      }
+    }
 
     const tasksQuery = activeTasks.map(t => t.title).join(' ');
     const memories = await getRelevantMemories(userId, tasksQuery, 10);
@@ -341,8 +385,63 @@ function runMockThinking(context: any): any {
     });
   }
 
+  // 4. Fatigue Sentinel & Auto-Shedder
+  let fatigueScore = 0;
+  const recentLogsDuration = context.logs.reduce((sum: number, l: any) => sum + (l.duration || 0), 0);
+  if (recentLogsDuration > 300) fatigueScore += 40;
+  else if (recentLogsDuration > 180) fatigueScore += 20;
+
+  const activeOverdueCount = overdueTasks.length;
+  if (activeOverdueCount > 6) fatigueScore += 30;
+  else if (activeOverdueCount > 3) fatigueScore += 15;
+
+  const currentHour = now.getHours();
+  if (currentHour >= 21 || currentHour < 5) {
+    fatigueScore += 30;
+  }
+
+  if (fatigueScore >= 70) {
+    suggestions.push({
+      id: 'suggest-burnout-deload',
+      actionType: 'nudge',
+      description: `Burnout Sentinel Alert (Fatigue Score: ${fatigueScore}/100): High work intensity detected. I recommend deferring low-priority items and taking a mandatory recovery break.`,
+      details: {
+        fatigueScore,
+        mitigation: 'Schedule recovery and defer low-priority tasks.'
+      }
+    });
+
+    const lowPriorityTask = overdueTasks.find((t: any) => t.priority === 'low');
+    if (lowPriorityTask) {
+      suggestions.push({
+        id: `suggest-reschedule-fatigue-${lowPriorityTask.id}`,
+        actionType: 'nudge',
+        description: `Fatigue Auto-Shedding: Defer non-critical task "${lowPriorityTask.title}" to tomorrow to prevent exhaustion.`,
+        details: {
+          taskId: lowPriorityTask.id,
+          suggestedDate: new Date(new Date().getTime() + 24 * 60 * 60 * 1000).toISOString().split('T')[0]
+        }
+      });
+    }
+
+    const hasRecoveryTask = context.tasks.some((t: any) => t.title.toLowerCase().includes('recovery') || t.title.toLowerCase().includes('rest session'));
+    if (!hasRecoveryTask) {
+      suggestions.push({
+        id: 'suggest-recovery-break',
+        actionType: 'create_task',
+        description: 'Create a mandatory 60-minute Focus Recovery & Recharge session.',
+        details: {
+          title: '🔋 Focus Recovery & Rest Session',
+          estimatedTime: 60,
+          category: 'Health',
+          priority: 'high'
+        }
+      });
+    }
+  }
+
   return {
-    rationale: 'Offline rule-based checks evaluated approaching goal deadlines, habit streak risks, and daily task overload.',
+    rationale: `Offline rule-based checks evaluated goal deadlines, habit risks, task capacity, and computed a Fatigue Score of ${fatigueScore}/100.`,
     suggestions,
     directActions
   };
