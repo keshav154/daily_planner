@@ -5,6 +5,43 @@ import { queryNvidiaNim } from '../config/nvidia';
 import Anthropic from '@anthropic-ai/sdk';
 import mongoose from 'mongoose';
 
+/**
+ * Safely parse JSON from AI response – strips markdown code fences, trailing commas, and unescaped newlines.
+ */
+function parseAiJson<T>(raw: string): T {
+  const stripped = raw
+    .replace(/^```(?:json)?\s*/i, '')
+    .replace(/\s*```\s*$/, '')
+    .trim();
+  
+  try {
+    return JSON.parse(stripped) as T;
+  } catch (err) {
+    let cleaned = stripped;
+
+    // 1. Remove trailing commas before closing braces/brackets
+    cleaned = cleaned.replace(/,(\s*[\]}])/g, '$1');
+
+    // 2. Escape newlines inside strings
+    cleaned = cleaned.replace(/"([^"\\]*(?:\\.[^"\\]*)*)"/g, (match) => {
+      return match.replace(/\n/g, '\\n').replace(/\r/g, '\\r');
+    });
+
+    // 3. Extract matching object or array if extra text is present
+    try {
+      return JSON.parse(cleaned) as T;
+    } catch (secondErr) {
+      const arrMatch = cleaned.match(/\[[\s\S]*\]/);
+      const objMatch = cleaned.match(/\{[\s\S]*\}/);
+      const candidate = arrMatch?.[0] ?? objMatch?.[0];
+      if (candidate) {
+        return JSON.parse(candidate) as T;
+      }
+      throw secondErr;
+    }
+  }
+}
+
 // Query LLM helper for consolidation
 async function askLLMForConsolidation(memories: any[]): Promise<any[] | null> {
   const nvidiaKey = process.env.NVIDIA_API_KEY;
@@ -57,11 +94,7 @@ Return ONLY a valid JSON array:
       responseText = response.content[0].type === 'text' ? response.content[0].text : '';
     }
 
-    let cleanJson = responseText.trim();
-    if (cleanJson.startsWith('```json')) cleanJson = cleanJson.slice(7);
-    if (cleanJson.endsWith('```')) cleanJson = cleanJson.slice(0, -3);
-
-    const parsed = JSON.parse(cleanJson.trim());
+    const parsed = parseAiJson<any[]>(responseText);
     if (Array.isArray(parsed)) {
       return parsed;
     }

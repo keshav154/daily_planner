@@ -44,6 +44,43 @@ async function queryLLM(prompt: string, systemPrompt: string): Promise<string | 
 }
 
 /**
+ * Safely parse JSON from AI response – strips markdown code fences, trailing commas, and unescaped newlines.
+ */
+function parseAiJson<T>(raw: string): T {
+  const stripped = raw
+    .replace(/^```(?:json)?\s*/i, '')
+    .replace(/\s*```\s*$/, '')
+    .trim();
+  
+  try {
+    return JSON.parse(stripped) as T;
+  } catch (err) {
+    let cleaned = stripped;
+
+    // 1. Remove trailing commas before closing braces/brackets
+    cleaned = cleaned.replace(/,(\s*[\]}])/g, '$1');
+
+    // 2. Escape newlines inside strings
+    cleaned = cleaned.replace(/"([^"\\]*(?:\\.[^"\\]*)*)"/g, (match) => {
+      return match.replace(/\n/g, '\\n').replace(/\r/g, '\\r');
+    });
+
+    // 3. Extract matching object or array if extra text is present
+    try {
+      return JSON.parse(cleaned) as T;
+    } catch (secondErr) {
+      const arrMatch = cleaned.match(/\[[\s\S]*\]/);
+      const objMatch = cleaned.match(/\{[\s\S]*\}/);
+      const candidate = arrMatch?.[0] ?? objMatch?.[0];
+      if (candidate) {
+        return JSON.parse(candidate) as T;
+      }
+      throw secondErr;
+    }
+  }
+}
+
+/**
  * Executes a full autonomous agent cycle (Think-Act-Observe) for a user.
  */
 export const runAutonomousAgentLoop = async (userId: string, trigger: string = 'autonomous_check') => {
@@ -218,10 +255,7 @@ Analyze the state, write your rationale, and output the suggestions and direct a
 
     if (raw) {
       try {
-        let cleanJson = raw.trim();
-        if (cleanJson.startsWith('```json')) cleanJson = cleanJson.slice(7);
-        if (cleanJson.endsWith('```')) cleanJson = cleanJson.slice(0, -3);
-        const parsed = JSON.parse(cleanJson.trim());
+        const parsed = parseAiJson<any>(raw);
         planOutput = {
           rationale: parsed.rationale || '',
           suggestions: parsed.suggestions || [],
