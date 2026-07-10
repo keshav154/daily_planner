@@ -1,4 +1,5 @@
 import mongoose, { Schema, Document } from 'mongoose';
+import { embedText } from '../services/embeddings';
 
 // User Schema
 export interface IUser extends Document {
@@ -17,6 +18,11 @@ export interface IUser extends Document {
     workingHoursEnd: string;   // e.g. "17:00"
     peakEnergyTime: 'morning' | 'afternoon' | 'evening' | 'night';
     workMode: 'office' | 'wfh';
+  };
+  agentState: {
+    lastMorningPlanDate?: string;   // YYYY-MM-DD in user's local timezone
+    lastReflectionDate?: string;    // YYYY-MM-DD in user's local timezone
+    lastWeeklyReflectionDate?: string; // YYYY-MM-DD in user's local timezone
   };
   createdAt: Date;
   updatedAt: Date;
@@ -38,6 +44,11 @@ const UserSchema = new Schema<IUser>({
     workingHoursEnd: { type: String, default: '17:00' },
     peakEnergyTime: { type: String, enum: ['morning', 'afternoon', 'evening', 'night'], default: 'morning' },
     workMode: { type: String, enum: ['office', 'wfh'], default: 'wfh' }
+  },
+  agentState: {
+    lastMorningPlanDate: { type: String },
+    lastReflectionDate: { type: String },
+    lastWeeklyReflectionDate: { type: String }
   }
 }, { timestamps: true });
 
@@ -128,6 +139,7 @@ export interface IAgentMemory extends Document {
     entityId: mongoose.Types.ObjectId;
     relationship: string;
   }>;
+  embedding?: number[];
   expiresAt?: Date;
   createdAt: Date;
   updatedAt: Date;
@@ -148,8 +160,24 @@ const AgentMemorySchema = new Schema<IAgentMemory>({
     entityId: { type: Schema.Types.ObjectId, required: true },
     relationship: { type: String, default: 'related_to' }
   }],
+  embedding: { type: [Number], default: undefined },
   expiresAt: { type: Date }
 }, { timestamps: true });
+
+// Compute a semantic embedding whenever memory content changes, so retrieval
+// can use vector similarity instead of keyword overlap. Failures are
+// swallowed (falls back to null embedding) so memory writes never block on it.
+AgentMemorySchema.pre('save', async function (next) {
+  if (this.isModified('content')) {
+    try {
+      const vector = await embedText(this.content, 'passage');
+      if (vector) this.embedding = vector;
+    } catch (err) {
+      console.error('[AgentMemory] Failed to compute embedding on save:', err);
+    }
+  }
+  next();
+});
 
 // AgentRun Schema
 export interface IAgentRun extends Document {

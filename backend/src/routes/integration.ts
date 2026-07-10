@@ -248,12 +248,12 @@ Only output the Markdown text.`;
       try {
         standupText = await queryNvidiaNim([
           { role: 'user', content: prompt }
-        ], process.env.NVIDIA_MODEL || 'meta/llama-3.1-70b-instruct', 0.2, 500) || '';
+        ], process.env.NVIDIA_MODEL || 'meta/llama-3.3-70b-instruct', 0.2, 500) || '';
       } catch (nvidiaErr) {
         console.warn('NVIDIA NIM standup generation failed, attempting Anthropic fallback:', nvidiaErr);
         if (client) {
           const response = await client.messages.create({
-            model: 'claude-3-5-sonnet-20241022',
+            model: 'claude-sonnet-5',
             max_tokens: 500,
             messages: [{ role: 'user', content: prompt }]
           });
@@ -264,7 +264,7 @@ Only output the Markdown text.`;
       }
     } else if (client) {
       const response = await client.messages.create({
-        model: 'claude-3-5-sonnet-20241022',
+        model: 'claude-sonnet-5',
         max_tokens: 500,
         messages: [{ role: 'user', content: prompt }]
       });

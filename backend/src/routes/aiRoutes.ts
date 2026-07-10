@@ -28,7 +28,7 @@ async function queryLLM(prompt: string, maxTokens = 800): Promise<string | null>
     try {
       return await queryNvidiaNim(
         [{ role: 'user', content: prompt }],
-        process.env.NVIDIA_MODEL || 'meta/llama-3.1-70b-instruct',
+        process.env.NVIDIA_MODEL || 'meta/llama-3.3-70b-instruct',
         0.3,
         maxTokens
       );
@@ -37,7 +37,7 @@ async function queryLLM(prompt: string, maxTokens = 800): Promise<string | null>
       if (anthropicClient) {
         try {
           const response = await anthropicClient.messages.create({
-            model: 'claude-3-5-sonnet-20241022',
+            model: 'claude-sonnet-5',
             max_tokens: maxTokens,
             messages: [{ role: 'user', content: prompt }]
           });
@@ -50,7 +50,7 @@ async function queryLLM(prompt: string, maxTokens = 800): Promise<string | null>
   } else if (anthropicClient) {
     try {
       const response = await anthropicClient.messages.create({
-        model: 'claude-3-5-sonnet-20241022',
+        model: 'claude-sonnet-5',
         max_tokens: maxTokens,
         messages: [{ role: 'user', content: prompt }]
       });
@@ -967,11 +967,11 @@ Output ONLY the formatted Markdown standup message text, no other greeting or wr
     if (isNvidiaActive) {
       const response = await queryNvidiaNim([
         { role: 'user', content: prompt }
-      ], process.env.NVIDIA_MODEL || 'meta/llama-3.1-70b-instruct', 0.3, 800);
+      ], process.env.NVIDIA_MODEL || 'meta/llama-3.3-70b-instruct', 0.3, 800);
       standupText = response || '';
     } else if (client) {
       const response = await client.messages.create({
-        model: 'claude-3-5-sonnet-20241022',
+        model: 'claude-sonnet-5',
         max_tokens: 800,
         messages: [{ role: 'user', content: prompt }]
       });

@@ -2,6 +2,7 @@ import { AgentMemory, Task, IUser } from '../models/Schemas';
 import Habit from '../models/Habit';
 import { Goal } from '../models/Goal';
 import { queryNvidiaNim } from '../config/nvidia';
+import { mineSuggestionFeedback, mineMemoryFeedback } from './feedbackMining';
 import Anthropic from '@anthropic-ai/sdk';
 import mongoose from 'mongoose';
 
@@ -80,14 +81,14 @@ Return ONLY a valid JSON array:
     if (isNvidiaActive) {
       responseText = await queryNvidiaNim(
         [{ role: 'user', content: prompt }],
-        process.env.NVIDIA_MODEL || 'meta/llama-3.1-70b-instruct',
+        process.env.NVIDIA_MODEL || 'meta/llama-3.3-70b-instruct',
         0.3,
         1000
       );
     } else if (isAnthropicActive) {
       const anthropic = new Anthropic({ apiKey: anthropicKey });
       const response = await anthropic.messages.create({
-        model: 'claude-3-5-sonnet-20241022',
+        model: 'claude-sonnet-5',
         max_tokens: 1000,
         messages: [{ role: 'user', content: prompt }]
       });
@@ -124,6 +125,13 @@ export const consolidateMemories = async (userId: string) => {
       { $inc: { importance: -1 } }
     );
     console.log(`[Memory Consolidation] Decayed importance on ${decayResult.modifiedCount} old memories.`);
+
+    // 1b. FEEDBACK MINING - learn which suggestion/memory categories the user actually wants
+    const minedSuggestionPatterns = await mineSuggestionFeedback(userId);
+    const minedMemoryPatterns = await mineMemoryFeedback(userId);
+    if (minedSuggestionPatterns.length > 0 || minedMemoryPatterns.length > 0) {
+      console.log(`[Memory Consolidation] Mined ${minedSuggestionPatterns.length + minedMemoryPatterns.length} behavioral pattern memories from feedback history.`);
+    }
 
     // Fetch all active user memories that are approved or pending feedback
     const activeMemories = await AgentMemory.find({ 

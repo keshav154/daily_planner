@@ -190,10 +190,10 @@ Format output as raw JSON only. Do not wrap in markdown \`\`\`json block.`;
     if (isNvidiaActive) {
       responseText = await queryNvidiaNim([
         { role: 'user', content: prompt }
-      ], process.env.NVIDIA_MODEL || 'meta/llama-3.1-70b-instruct', 0.1, 400);
+      ], process.env.NVIDIA_MODEL || 'meta/llama-3.3-70b-instruct', 0.1, 400);
     } else if (client) {
       const response = await client.messages.create({
-        model: 'claude-3-5-sonnet-20241022',
+        model: 'claude-sonnet-5',
         max_tokens: 400,
         messages: [{ role: 'user', content: prompt }]
       });

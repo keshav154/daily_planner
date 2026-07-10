@@ -1,84 +1,11 @@
 import { User, Task, Log, AgentMemory, AgentRun, ITask, ILog, IAgentMemory } from '../models/Schemas';
 import { Goal } from '../models/Goal';
 import Habit from '../models/Habit';
-import { queryNvidiaNim } from '../config/nvidia';
-import { getRelevantMemories } from './similarity';
+import { getRelevantMemories, getPatternMemories } from './similarity';
 import { searchSreResources } from './webSearch';
+import { runNimToolLoop, runAnthropicToolLoop, ToolLoopResult } from '../agent/toolLoop';
 import Anthropic from '@anthropic-ai/sdk';
 import mongoose from 'mongoose';
-
-// Helper to query LLM
-async function queryLLM(prompt: string, systemPrompt: string): Promise<string | null> {
-  const nvidiaKey = process.env.NVIDIA_API_KEY;
-  const isNvidiaActive = nvidiaKey && nvidiaKey !== 'your_nvidia_api_key_here';
-  const anthropicKey = process.env.ANTHROPIC_API_KEY;
-  const isAnthropicActive = anthropicKey && anthropicKey !== 'your_anthropic_api_key_here';
-
-  if (!isNvidiaActive && !isAnthropicActive) return null;
-
-  try {
-    if (isNvidiaActive) {
-      return await queryNvidiaNim(
-        [
-          { role: 'system', content: systemPrompt },
-          { role: 'user', content: prompt }
-        ],
-        process.env.NVIDIA_MODEL || 'meta/llama-3.1-70b-instruct',
-        0.3,
-        1500
-      );
-    } else if (isAnthropicActive) {
-      const anthropic = new Anthropic({ apiKey: anthropicKey });
-      const response = await anthropic.messages.create({
-        model: 'claude-3-5-sonnet-20241022',
-        max_tokens: 1500,
-        system: systemPrompt,
-        messages: [{ role: 'user', content: prompt }]
-      });
-      return response.content[0].type === 'text' ? response.content[0].text : null;
-    }
-  } catch (err) {
-    console.error('[Autonomous Loop] LLM query failed:', err);
-  }
-  return null;
-}
-
-/**
- * Safely parse JSON from AI response – strips markdown code fences, trailing commas, and unescaped newlines.
- */
-function parseAiJson<T>(raw: string): T {
-  const stripped = raw
-    .replace(/^```(?:json)?\s*/i, '')
-    .replace(/\s*```\s*$/, '')
-    .trim();
-  
-  try {
-    return JSON.parse(stripped) as T;
-  } catch (err) {
-    let cleaned = stripped;
-
-    // 1. Remove trailing commas before closing braces/brackets
-    cleaned = cleaned.replace(/,(\s*[\]}])/g, '$1');
-
-    // 2. Escape newlines inside strings
-    cleaned = cleaned.replace(/"([^"\\]*(?:\\.[^"\\]*)*)"/g, (match) => {
-      return match.replace(/\n/g, '\\n').replace(/\r/g, '\\r');
-    });
-
-    // 3. Extract matching object or array if extra text is present
-    try {
-      return JSON.parse(cleaned) as T;
-    } catch (secondErr) {
-      const arrMatch = cleaned.match(/\[[\s\S]*\]/);
-      const objMatch = cleaned.match(/\{[\s\S]*\}/);
-      const candidate = arrMatch?.[0] ?? objMatch?.[0];
-      if (candidate) {
-        return JSON.parse(candidate) as T;
-      }
-      throw secondErr;
-    }
-  }
-}
 
 /**
  * Executes a full autonomous agent cycle (Think-Act-Observe) for a user.
@@ -175,7 +102,14 @@ ${searchResult.content}`;
     }
 
     const tasksQuery = activeTasks.map(t => t.title).join(' ');
-    const memories = await getRelevantMemories(userId, tasksQuery, 10);
+    const relevantMemories = await getRelevantMemories(userId, tasksQuery, 10);
+    const patternMemories = await getPatternMemories(userId, 5);
+    const memoryKey = (m: any) => (m._id ? m._id.toString() : m.content);
+    const seenMemoryIds = new Set(relevantMemories.map(memoryKey));
+    const memories = [
+      ...relevantMemories,
+      ...patternMemories.filter((m: any) => !seenMemoryIds.has(memoryKey(m)))
+    ];
 
     const adjustedPreferences = { 
       ...user.preferences,
@@ -197,119 +131,64 @@ ${searchResult.content}`;
       memories: memories.map(m => m.content)
     };
 
-    // 2. THINK PHASE: Reason about current state and formulate suggestions
+    // 2 & 3. THINK + ACT PHASE: A real tool-calling loop instead of a single JSON blob.
+    // The model calls tools (get_tasks, create_task, schedule_time_block, break_down_task,
+    // defer_task, create_nudge_memory, add_goal_note, search_memories, propose_reorder),
+    // sees each result, and can decide on further actions before concluding.
     const systemPrompt = `You are Kortex Cognitive Brain, an autonomous agent managing a user's second brain.
-You run in a Think-Act-Observe loop. Your job is to analyze the user's daily planner, habits, and goals context to propose adjustments.
+You run in a Think-Act-Observe loop using tools to inspect and adjust the user's daily planner, habits, and goals.
 
-Allowed proposal actions in suggestions:
-- "reorder": { "orderedTaskIds": string[] } (Reorder tasks to prioritize)
-- "suggest_time_block": { "taskId": string, "startTime": string, "duration": number } (Schedule a task to a focus block)
-- "break_down": { "taskId": string, "subtasks": string[] } (Decompose a big task)
-- "nudge": { "taskId": string, "message": string } (Alert the user to focus on an overdue item or daily calendar overloading)
-- "create_task": { "title": string, "estimatedTime": number } (Create a catch-up or missing prerequisite task)
+Guidance:
+1. Goal timelines: If a deadline is approaching (<=4 days) but progress is low (<70%), call add_goal_note to log a warning and create_task for a catch-up task.
+2. Habit streaks: If a habit is at risk (streak active but not completed today), call create_nudge_memory to warn the user before midnight.
+3. Task load & Calendar Load-Balancing: If the user is in "office" workMode (6-hour capacity), and total estimated task time exceeds 4 hours, call defer_task on low-priority items or propose_reorder to prioritize.
+4. Overdue tasks: Use break_down_task or schedule_time_block to make overdue todo items actionable.
+5. Past memories: Use search_memories if you need more context before acting, and never contradict an accepted user preference.
 
-Autonomous actions you can execute directly (returned under "directActions"):
-- "add_agent_note": { "goalId": string, "note": string } (Add an observational note to a goal's progress feed)
-- "create_nudge_memory": { "content": string, "category": string, "importance": number } (Create a temporary memory warning, e.g. habit streak at risk)
+Only call tools when there is a genuine, specific issue to address — do not act just to act. Small, safe, reversible changes (create_task, schedule_time_block, break_down_task, defer_task, create_nudge_memory, add_goal_note) should be executed directly via tool calls. Anything that reshuffles the whole day (propose_reorder) is queued for human approval instead of applied immediately.
+When you are done taking actions, respond with a final short text message summarizing your rationale (no further tool calls).`;
 
-Format output strictly as a JSON object containing:
-{
-  "rationale": "Detailed step-by-step thinking explaining your analysis of goals, streaks, and focus metrics",
-  "suggestions": [
-    {
-      "id": "unique-slug",
-      "taskId": "task-id-if-applicable",
-      "actionType": "reorder|suggest_time_block|break_down|nudge|create_task",
-      "description": "Short rationale for the user",
-      "details": { ... }
-    }
-  ],
-  "directActions": [
-    {
-      "actionType": "add_agent_note|create_nudge_memory",
-      "details": { ... }
-    }
-  ]
-}`;
-
-    const prompt = `Here is the current workspace snapshot:
+    const userPrompt = `Here is the current workspace snapshot:
 ${JSON.stringify(context, null, 2)}
 
-Inspect:
-1. Goal timelines: Are deadlines approaching but progress is low? Recommend creating catch-up tasks or add a goal warning.
-2. Habit streaks: Are streaks at risk of breaking? Propose creating a nudge task or memory warning.
-3. Task load & Calendar Load-Balancing: If user is in "office" workMode (working hours 10:30-16:30, i.e., 6-hour capacity), check if total task estimates exceed 4 hours. If overloaded, recommend a "nudge" or "reorder" proposing to defer low-priority tasks to tomorrow.
-4. Overdue tasks: Suggest rescheduling or breaking down overdue todo items.
-5. Past memories: Ensure your plan conforms to user preferences.
+Review goal timelines, habit streaks, task load, and overdue tasks as described in your instructions, taking any warranted tool actions. Finish with a concise rationale summarizing what you observed and did.`;
 
-Analyze the state, write your rationale, and output the suggestions and direct actions.`;
+    const nvidiaKey = process.env.NVIDIA_API_KEY;
+    const isNvidiaActive = !!(nvidiaKey && nvidiaKey !== 'your_nvidia_api_key_here');
+    const anthropicKey = process.env.ANTHROPIC_API_KEY;
+    const isAnthropicActive = !!(anthropicKey && anthropicKey !== 'your_anthropic_api_key_here');
 
-    interface PlanOutput {
-      rationale: string;
-      suggestions: any[];
-      directActions: any[];
-    }
+    let loopResult: ToolLoopResult | null = null;
+    const toolCtx = { userId, now };
 
-    const raw = await queryLLM(prompt, systemPrompt);
-    let planOutput: PlanOutput = { rationale: '', suggestions: [], directActions: [] };
-
-    if (raw) {
+    if (isNvidiaActive) {
       try {
-        const parsed = parseAiJson<any>(raw);
-        planOutput = {
-          rationale: parsed.rationale || '',
-          suggestions: parsed.suggestions || [],
-          directActions: parsed.directActions || []
-        };
+        loopResult = await runNimToolLoop(systemPrompt, userPrompt, toolCtx);
       } catch (err) {
-        console.error('[Autonomous Loop] Failed to parse AI plan JSON. Using mock planner.', err);
-        planOutput = runMockThinking(context);
+        console.error('[Autonomous Loop] NIM tool loop failed, attempting Anthropic fallback:', err);
       }
-    } else {
-      planOutput = runMockThinking(context);
     }
 
-    // 3. ACT PHASE: Execute directActions and save suggestions for human approval
-    const executedLogs: string[] = [];
-
-    if (planOutput.directActions && planOutput.directActions.length > 0) {
-      for (const dAct of planOutput.directActions) {
-        try {
-          switch (dAct.actionType) {
-            case 'add_agent_note': {
-              const { goalId, note } = dAct.details;
-              if (goalId && note) {
-                await Goal.updateOne(
-                  { _id: new mongoose.Types.ObjectId(goalId), userId },
-                  { $push: { agentNotes: `[Autonomous Brain] ${note} (${now.toLocaleDateString()})` } }
-                );
-                executedLogs.push(`Added notes to goal ${goalId}: "${note}"`);
-              }
-              break;
-            }
-            case 'create_nudge_memory': {
-              const { content, category, importance } = dAct.details;
-              if (content) {
-                const newMem = new AgentMemory({
-                  userId,
-                  type: 'adjustment',
-                  content,
-                  category: category || 'productivity',
-                  feedback: 'none', // pending user dismissal
-                  source: 'autonomous',
-                  importance: importance || 6,
-                  expiresAt: new Date(now.getTime() + 24 * 60 * 60 * 1000) // expires in 24 hours
-                });
-                await newMem.save();
-                executedLogs.push(`Created temporary agent nudge memory: "${content}"`);
-              }
-              break;
-            }
-          }
-        } catch (e: any) {
-          console.error(`[Autonomous Loop] Failed to run direct action ${dAct.actionType}:`, e.message);
-        }
+    if (!loopResult && isAnthropicActive) {
+      try {
+        const anthropic = new Anthropic({ apiKey: anthropicKey });
+        loopResult = await runAnthropicToolLoop(anthropic, systemPrompt, userPrompt, toolCtx);
+      } catch (err) {
+        console.error('[Autonomous Loop] Anthropic tool loop failed:', err);
       }
+    }
+
+    let planOutput: { rationale: string; suggestions: any[] };
+    let executedLogs: string[] = [];
+
+    if (loopResult) {
+      planOutput = { rationale: loopResult.rationale, suggestions: loopResult.suggestions };
+      executedLogs = loopResult.executedLogs;
+    } else {
+      // No LLM active or both providers failed: deterministic rule-based fallback.
+      const mockPlan = runMockThinking(context);
+      executedLogs = await executeMockDirectActions(userId, now, mockPlan.directActions);
+      planOutput = { rationale: mockPlan.rationale, suggestions: mockPlan.suggestions };
     }
 
     // Save pending suggestions to AgentRun so the user can accept/reject them in the dashboard
@@ -346,6 +225,49 @@ Analyze the state, write your rationale, and output the suggestions and direct a
     return null;
   }
 };
+
+// Executes the directActions produced by the deterministic mock planner (used when no LLM is active)
+async function executeMockDirectActions(userId: string, now: Date, directActions: any[]): Promise<string[]> {
+  const executedLogs: string[] = [];
+  for (const dAct of directActions || []) {
+    try {
+      switch (dAct.actionType) {
+        case 'add_agent_note': {
+          const { goalId, note } = dAct.details;
+          if (goalId && note) {
+            await Goal.updateOne(
+              { _id: new mongoose.Types.ObjectId(goalId), userId },
+              { $push: { agentNotes: `[Autonomous Brain] ${note} (${now.toLocaleDateString()})` } }
+            );
+            executedLogs.push(`Added notes to goal ${goalId}: "${note}"`);
+          }
+          break;
+        }
+        case 'create_nudge_memory': {
+          const { content, category, importance } = dAct.details;
+          if (content) {
+            const newMem = new AgentMemory({
+              userId,
+              type: 'adjustment',
+              content,
+              category: category || 'productivity',
+              feedback: 'none', // pending user dismissal
+              source: 'autonomous',
+              importance: importance || 6,
+              expiresAt: new Date(now.getTime() + 24 * 60 * 60 * 1000) // expires in 24 hours
+            });
+            await newMem.save();
+            executedLogs.push(`Created temporary agent nudge memory: "${content}"`);
+          }
+          break;
+        }
+      }
+    } catch (e: any) {
+      console.error(`[Autonomous Loop] Failed to run direct action ${dAct.actionType}:`, e.message);
+    }
+  }
+  return executedLogs;
+}
 
 // Fallback rule-based thinking generator (deterministic checks)
 function runMockThinking(context: any): any {

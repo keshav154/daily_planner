@@ -1,4 +1,5 @@
 import { AgentMemory } from '../models/Schemas';
+import { embedText, cosineSimilarity } from './embeddings';
 
 const SRE_SYNONYMS: Record<string, string[]> = {
   'kubernetes': ['k8s', 'cluster', 'clusters', 'pod', 'pods', 'deployment', 'deployments', 'helm', 'kubectl'],
@@ -25,8 +26,45 @@ const SRE_SYNONYMS: Record<string, string[]> = {
 };
 
 /**
- * Searches and ranks memories relevant to a user's text query or daily context
- * using token-overlap based cosine similarity matching.
+ * Token-overlap fallback score, used when semantic embeddings aren't
+ * available (no NVIDIA key, embedding call failed, or memory predates
+ * embedding support).
+ */
+function tokenOverlapScore(queryTokens: string[], memory: any): number {
+  const contentTokens = memory.content.toLowerCase().split(/\W+/).filter((t: string) => t.length > 2);
+  let matchCount = 0;
+
+  queryTokens.forEach(qToken => {
+    const synonyms = SRE_SYNONYMS[qToken] || [];
+    const tokensToMatch = [qToken, ...synonyms];
+
+    let foundMatch = false;
+    for (const token of tokensToMatch) {
+      if (contentTokens.includes(token)) {
+        matchCount += 1.0;
+        foundMatch = true;
+        break;
+      }
+    }
+
+    if (!foundMatch) {
+      const hasPartial = contentTokens.some((cToken: string) =>
+        tokensToMatch.some(t => cToken.includes(t) || t.includes(cToken))
+      );
+      if (hasPartial) {
+        matchCount += 0.4;
+      }
+    }
+  });
+
+  return matchCount / (Math.sqrt(queryTokens.length) * Math.sqrt(contentTokens.length || 1));
+}
+
+/**
+ * Searches and ranks memories relevant to a user's text query or daily context.
+ * Prefers semantic vector similarity (NVIDIA NIM embeddings) when a query
+ * embedding and memory embeddings are available, falling back to token-overlap
+ * matching otherwise. Importance and recency always factor into the final score.
  */
 export const getRelevantMemories = async (
   userId: string,
@@ -36,8 +74,8 @@ export const getRelevantMemories = async (
   try {
     const now = new Date();
     // Fetch active, non-rejected, and non-expired memories
-    const memories = await AgentMemory.find({ 
-      userId, 
+    const memories = await AgentMemory.find({
+      userId,
       feedback: { $ne: 'rejected' },
       $or: [
         { expiresAt: { $exists: false } },
@@ -69,40 +107,24 @@ export const getRelevantMemories = async (
       return topMemories;
     }
 
+    // Try semantic search first; falls back to null if no NVIDIA key or the call fails
+    const queryEmbedding = await embedText(query, 'query');
+
     const scoredMemories = memories.map(memory => {
-      const contentTokens = memory.content.toLowerCase().split(/\W+/).filter(t => t.length > 2);
-      let matchCount = 0;
+      const memEmbedding = (memory as any).embedding as number[] | undefined;
+      let baseScore: number;
 
-      queryTokens.forEach(qToken => {
-        const synonyms = SRE_SYNONYMS[qToken] || [];
-        const tokensToMatch = [qToken, ...synonyms];
+      if (queryEmbedding && memEmbedding && memEmbedding.length > 0) {
+        // Cosine similarity is in [-1, 1]; treat unrelated/negative as 0 signal.
+        baseScore = Math.max(0, cosineSimilarity(queryEmbedding, memEmbedding));
+      } else {
+        baseScore = tokenOverlapScore(queryTokens, memory);
+      }
 
-        let foundMatch = false;
-        for (const token of tokensToMatch) {
-          if (contentTokens.includes(token)) {
-            matchCount += 1.0;
-            foundMatch = true;
-            break;
-          }
-        }
-
-        if (!foundMatch) {
-          const hasPartial = contentTokens.some(cToken => 
-            tokensToMatch.some(t => cToken.includes(t) || t.includes(cToken))
-          );
-          if (hasPartial) {
-            matchCount += 0.4;
-          }
-        }
-      });
-
-      // 1. Base overlap score
-      const baseScore = matchCount / (Math.sqrt(queryTokens.length) * Math.sqrt(contentTokens.length || 1));
-
-      // 2. Importance factor (default to 5, range 1-10 mapped to multiplier 0.2 - 2.0)
+      // Importance factor (default to 5, range 1-10 mapped to multiplier 0.2 - 2.0)
       const importanceFactor = (memory.importance || 5) / 5;
 
-      // 3. Recency boost
+      // Recency boost
       const lastAccess = new Date(memory.lastAccessedAt || memory.updatedAt || now);
       const daysSinceAccess = Math.max(0, (now.getTime() - lastAccess.getTime()) / (1000 * 60 * 60 * 24));
       const recencyBoost = 1.0 + (0.3 / (daysSinceAccess + 1));
@@ -131,6 +153,42 @@ export const getRelevantMemories = async (
   }
 };
 
+const PATTERN_CATEGORIES = [
+  'Suggestion Feedback Pattern',
+  'Memory Feedback Pattern',
+  'Estimation Bias',
+  'Weekly Pattern',
+  'Habit Correlation'
+];
+
+/**
+ * Fetches high-importance meta-pattern memories (mined from accept/reject
+ * history) unconditionally, regardless of topical similarity to the current
+ * query. These describe the agent's own behavior ("user rejects break_down
+ * suggestions") rather than task content, so they would otherwise be starved
+ * out by a near-zero similarity score against unrelated task titles.
+ */
+export const getPatternMemories = async (userId: string, limit: number = 5): Promise<any[]> => {
+  try {
+    const now = new Date();
+    const memories = await AgentMemory.find({
+      userId,
+      category: { $in: PATTERN_CATEGORIES },
+      feedback: { $ne: 'rejected' },
+      $or: [
+        { expiresAt: { $exists: false } },
+        { expiresAt: { $gt: now } }
+      ]
+    })
+      .sort({ importance: -1, updatedAt: -1 })
+      .limit(limit);
+    return memories;
+  } catch (err) {
+    console.error('Failed to fetch pattern memories:', err);
+    return [];
+  }
+};
+
 // Helper function to update access details
 async function updateAccessStats(memories: any[]) {
   try {
@@ -139,7 +197,7 @@ async function updateAccessStats(memories: any[]) {
     const ids = memories.map(m => m._id);
     await AgentMemory.updateMany(
       { _id: { $in: ids } },
-      { 
+      {
         $inc: { accessCount: 1 },
         $set: { lastAccessedAt: now }
       }

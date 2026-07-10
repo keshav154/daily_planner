@@ -34,7 +34,7 @@ Return ONLY a valid JSON array of strings containing milestone names. Do not inc
       try {
         responseText = await queryNvidiaNim(
           [{ role: 'user', content: prompt }],
-          process.env.NVIDIA_MODEL || 'meta/llama-3.1-70b-instruct',
+          process.env.NVIDIA_MODEL || 'meta/llama-3.3-70b-instruct',
           0.3,
           500
         );
@@ -43,7 +43,7 @@ Return ONLY a valid JSON array of strings containing milestone names. Do not inc
         if (isAnthropicActive) {
           const anthropic = new Anthropic({ apiKey: anthropicKey });
           const response = await anthropic.messages.create({
-            model: 'claude-3-5-sonnet-20241022',
+            model: 'claude-sonnet-5',
             max_tokens: 500,
             messages: [{ role: 'user', content: prompt }]
           });
@@ -55,7 +55,7 @@ Return ONLY a valid JSON array of strings containing milestone names. Do not inc
     } else if (isAnthropicActive) {
       const anthropic = new Anthropic({ apiKey: anthropicKey });
       const response = await anthropic.messages.create({
-        model: 'claude-3-5-sonnet-20241022',
+        model: 'claude-sonnet-5',
         max_tokens: 500,
         messages: [{ role: 'user', content: prompt }]
       });

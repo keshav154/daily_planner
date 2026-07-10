@@ -86,12 +86,12 @@ Keep the tone encouraging, high-agency, professional, and productivity-focused. 
           try {
             briefingText = await queryNvidiaNim([
               { role: 'user', content: prompt }
-            ], process.env.NVIDIA_MODEL || 'meta/llama-3.1-70b-instruct', 0.5, 300);
+            ], process.env.NVIDIA_MODEL || 'meta/llama-3.3-70b-instruct', 0.5, 300);
           } catch (nvidiaErr) {
             console.warn('NVIDIA NIM API call failed, attempting Anthropic fallback:', nvidiaErr);
             if (anthropicClient) {
               const response = await anthropicClient.messages.create({
-                model: 'claude-3-5-sonnet-20241022',
+                model: 'claude-sonnet-5',
                 max_tokens: 300,
                 messages: [{ role: 'user', content: prompt }]
               });
@@ -102,7 +102,7 @@ Keep the tone encouraging, high-agency, professional, and productivity-focused. 
           }
         } else if (anthropicClient) {
           const response = await anthropicClient.messages.create({
-            model: 'claude-3-5-sonnet-20241022',
+            model: 'claude-sonnet-5',
             max_tokens: 300,
             messages: [{ role: 'user', content: prompt }]
           });

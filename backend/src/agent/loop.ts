@@ -2,7 +2,7 @@ import Anthropic from '@anthropic-ai/sdk';
 import mongoose from 'mongoose';
 import { User, Task, Log, AgentMemory, AgentRun, ITask, ILog, IAgentMemory } from '../models/Schemas';
 import { queryNvidiaNim } from '../config/nvidia';
-import { getRelevantMemories } from '../services/similarity';
+import { getRelevantMemories, getPatternMemories } from '../services/similarity';
 
 // Instantiate Anthropic Client
 const getAnthropicClient = (): Anthropic | null => {
@@ -24,10 +24,10 @@ const askLLM = async (
     return await queryNvidiaNim([
       { role: 'system', content: systemPrompt },
       { role: 'user', content: prompt }
-    ], process.env.NVIDIA_MODEL || 'meta/llama-3.1-70b-instruct', 0.3, 1500);
+    ], process.env.NVIDIA_MODEL || 'meta/llama-3.3-70b-instruct', 0.3, 1500);
   } else if (client) {
     const response = await client.messages.create({
-      model: 'claude-3-5-sonnet-20241022',
+      model: 'claude-sonnet-5',
       max_tokens: 1500,
       system: systemPrompt,
       messages: [{ role: 'user', content: prompt }]
@@ -105,9 +105,19 @@ export const gatherUserContext = async (userId: string, targetDateStr?: string) 
     timestamp: { $gte: startOfDay, $lte: endOfDay }
   }).sort({ timestamp: -1 });
 
-  // Fetch semantically matched memories based on current tasks titles
+  // Fetch semantically matched memories based on current tasks titles, plus
+  // high-importance behavioral patterns mined from accept/reject history
+  // (these describe the agent's own behavior, not task content, so they are
+  // fetched unconditionally rather than by topical similarity).
   const tasksQuery = activeTasks.map(t => t.title).join(' ');
-  const memories = await getRelevantMemories(userId, tasksQuery, 10);
+  const relevantMemories = await getRelevantMemories(userId, tasksQuery, 10);
+  const patternMemories = await getPatternMemories(userId, 5);
+  const memoryKey = (m: any) => (m._id ? m._id.toString() : m.content);
+  const seenMemoryIds = new Set(relevantMemories.map(memoryKey));
+  const memories = [
+    ...relevantMemories,
+    ...patternMemories.filter((m: any) => !seenMemoryIds.has(memoryKey(m)))
+  ];
 
   // Fetch past completion stats (last 7 days completed tasks vs all tasks)
   const sevenDaysAgo = new Date();
@@ -470,10 +480,10 @@ Return ONLY a JSON object matching this schema, no other text:
     if (isNvidiaActive) {
       responseText = await queryNvidiaNim([
         { role: 'user', content: prompt }
-      ], process.env.NVIDIA_MODEL || 'meta/llama-3.1-70b-instruct', 0.2, 1000);
+      ], process.env.NVIDIA_MODEL || 'meta/llama-3.3-70b-instruct', 0.2, 1000);
     } else if (client) {
       const response = await client.messages.create({
-        model: 'claude-3-5-sonnet-20241022',
+        model: 'claude-sonnet-5',
         max_tokens: 1000,
         messages: [{ role: 'user', content: prompt }]
       });
