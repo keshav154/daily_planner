@@ -10,6 +10,43 @@ import Anthropic from '@anthropic-ai/sdk';
 
 const router = Router();
 
+/**
+ * Safely parse JSON from AI response – strips markdown code fences, trailing commas, and unescaped newlines.
+ */
+function parseAiJson<T>(raw: string): T {
+  const stripped = raw
+    .replace(/^```(?:json)?\s*/i, '')
+    .replace(/\s*```\s*$/, '')
+    .trim();
+  
+  try {
+    return JSON.parse(stripped) as T;
+  } catch (err) {
+    let cleaned = stripped;
+
+    // 1. Remove trailing commas before closing braces/brackets
+    cleaned = cleaned.replace(/,(\s*[\]}])/g, '$1');
+
+    // 2. Escape newlines inside strings
+    cleaned = cleaned.replace(/"([^"\\]*(?:\\.[^"\\]*)*)"/g, (match) => {
+      return match.replace(/\n/g, '\\n').replace(/\r/g, '\\r');
+    });
+
+    // 3. Extract matching object or array if extra text is present
+    try {
+      return JSON.parse(cleaned) as T;
+    } catch (secondErr) {
+      const arrMatch = cleaned.match(/\[[\s\S]*\]/);
+      const objMatch = cleaned.match(/\{[\s\S]*\}/);
+      const candidate = arrMatch?.[0] ?? objMatch?.[0];
+      if (candidate) {
+        return JSON.parse(candidate) as T;
+      }
+      throw secondErr;
+    }
+  }
+}
+
 // Trigger a new Planning loop run
 router.post('/plan', authenticateToken, async (req: AuthRequest, res: Response) => {
   try {
@@ -340,11 +377,7 @@ Format output as raw JSON only. Do not wrap in markdown \`\`\`json block.`;
       });
     }
 
-    let cleanJson = responseText.trim();
-    if (cleanJson.startsWith('```json')) cleanJson = cleanJson.slice(7);
-    if (cleanJson.endsWith('```')) cleanJson = cleanJson.slice(0, -3);
-
-    const parsedResponse = JSON.parse(cleanJson.trim());
+    const parsedResponse = parseAiJson<any>(responseText);
     const suggestions = parsedResponse.suggestions || [];
     let toolCallResult = null;
 
@@ -594,11 +627,7 @@ Return ONLY a JSON matching this exact structure:
       });
     }
 
-    let cleanJson = responseText.trim();
-    if (cleanJson.startsWith('```json')) cleanJson = cleanJson.slice(7);
-    if (cleanJson.endsWith('```')) cleanJson = cleanJson.slice(0, -3);
-
-    const debateOutput = JSON.parse(cleanJson.trim());
+    const debateOutput = parseAiJson<any>(responseText);
 
     // Save debate suggestions as a run to resolve
     let runId = null;

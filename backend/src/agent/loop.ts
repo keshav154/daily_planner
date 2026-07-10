@@ -37,6 +37,43 @@ const askLLM = async (
   throw new Error('No LLM client active');
 };
 
+/**
+ * Safely parse JSON from AI response – strips markdown code fences, trailing commas, and unescaped newlines.
+ */
+function parseAiJson<T>(raw: string): T {
+  const stripped = raw
+    .replace(/^```(?:json)?\s*/i, '')
+    .replace(/\s*```\s*$/, '')
+    .trim();
+  
+  try {
+    return JSON.parse(stripped) as T;
+  } catch (err) {
+    let cleaned = stripped;
+
+    // 1. Remove trailing commas before closing braces/brackets
+    cleaned = cleaned.replace(/,(\s*[\]}])/g, '$1');
+
+    // 2. Escape newlines inside strings
+    cleaned = cleaned.replace(/"([^"\\]*(?:\\.[^"\\]*)*)"/g, (match) => {
+      return match.replace(/\n/g, '\\n').replace(/\r/g, '\\r');
+    });
+
+    // 3. Extract matching object or array if extra text is present
+    try {
+      return JSON.parse(cleaned) as T;
+    } catch (secondErr) {
+      const arrMatch = cleaned.match(/\[[\s\S]*\]/);
+      const objMatch = cleaned.match(/\{[\s\S]*\}/);
+      const candidate = arrMatch?.[0] ?? objMatch?.[0];
+      if (candidate) {
+        return JSON.parse(candidate) as T;
+      }
+      throw secondErr;
+    }
+  }
+}
+
 // ----------------------------------------------------
 // 1. Observe: Gather context snapshot
 // ----------------------------------------------------
@@ -212,15 +249,7 @@ Return ONLY a valid JSON object matching the original schema. No explanations, n
 
     const refinedText = await askLLM(refinementPrompt, systemPrompt, isNvidiaActive, client);
 
-    let cleanJson = refinedText.trim();
-    if (cleanJson.startsWith('```json')) {
-      cleanJson = cleanJson.slice(7);
-    }
-    if (cleanJson.endsWith('```')) {
-      cleanJson = cleanJson.slice(0, -3);
-    }
-
-    const planOutput = JSON.parse(cleanJson.trim());
+    const planOutput = parseAiJson<any>(refinedText);
 
     // Save this agent run
     const agentRun = new AgentRun({
@@ -451,15 +480,7 @@ Return ONLY a JSON object matching this schema, no other text:
       responseText = response.content[0].type === 'text' ? response.content[0].text : '';
     }
 
-    let cleanJson = responseText.trim();
-    if (cleanJson.startsWith('```json')) {
-      cleanJson = cleanJson.slice(7);
-    }
-    if (cleanJson.endsWith('```')) {
-      cleanJson = cleanJson.slice(0, -3);
-    }
-
-    const reflection: ReflectionResult = JSON.parse(cleanJson.trim());
+    const reflection: ReflectionResult = parseAiJson<ReflectionResult>(responseText);
 
     // Save reflection insights into AgentMemory
     const savedMemories: IAgentMemory[] = [];

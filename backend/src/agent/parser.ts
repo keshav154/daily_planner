@@ -20,6 +20,43 @@ const getAnthropicClient = (): Anthropic | null => {
   return new Anthropic({ apiKey });
 };
 
+/**
+ * Safely parse JSON from AI response – strips markdown code fences, trailing commas, and unescaped newlines.
+ */
+function parseAiJson<T>(raw: string): T {
+  const stripped = raw
+    .replace(/^```(?:json)?\s*/i, '')
+    .replace(/\s*```\s*$/, '')
+    .trim();
+  
+  try {
+    return JSON.parse(stripped) as T;
+  } catch (err) {
+    let cleaned = stripped;
+
+    // 1. Remove trailing commas before closing braces/brackets
+    cleaned = cleaned.replace(/,(\s*[\]}])/g, '$1');
+
+    // 2. Escape newlines inside strings
+    cleaned = cleaned.replace(/"([^"\\]*(?:\\.[^"\\]*)*)"/g, (match) => {
+      return match.replace(/\n/g, '\\n').replace(/\r/g, '\\r');
+    });
+
+    // 3. Extract matching object or array if extra text is present
+    try {
+      return JSON.parse(cleaned) as T;
+    } catch (secondErr) {
+      const arrMatch = cleaned.match(/\[[\s\S]*\]/);
+      const objMatch = cleaned.match(/\{[\s\S]*\}/);
+      const candidate = arrMatch?.[0] ?? objMatch?.[0];
+      if (candidate) {
+        return JSON.parse(candidate) as T;
+      }
+      throw secondErr;
+    }
+  }
+}
+
 // Helper to apply estimation bias learning factor
 async function applyEstimationBias(task: ParsedTaskResult, userId: string) {
   try {
@@ -164,15 +201,7 @@ Format output as raw JSON only. Do not wrap in markdown \`\`\`json block.`;
     }
     
     // Clean JSON content block if the model wraps it
-    let cleanJson = responseText.trim();
-    if (cleanJson.startsWith('```json')) {
-      cleanJson = cleanJson.slice(7);
-    }
-    if (cleanJson.endsWith('```')) {
-      cleanJson = cleanJson.slice(0, -3);
-    }
-    
-    const parsed: ParsedTaskResult = JSON.parse(cleanJson.trim());
+    const parsed: ParsedTaskResult = parseAiJson<ParsedTaskResult>(responseText);
     if (userId) {
       await applyEstimationBias(parsed, userId);
     }
