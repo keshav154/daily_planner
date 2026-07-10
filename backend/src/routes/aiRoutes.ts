@@ -312,11 +312,13 @@ Return ONLY valid JSON:
   "advice": "one concrete actionable suggestion"
 }`;
 
+    // Frontend (BurnoutAlert.tsx) reads totalMinutesThisWeek/overdueTasksCount at the
+    // top level of the response, so both are included alongside the nested `stats`.
     const raw = await queryLLM(prompt, 400);
     if (raw) {
       const parsed = parseAiJson<any>(raw);
       if (parsed?.riskLevel) {
-        return res.json({ ...parsed, stats });
+        return res.json({ ...parsed, totalMinutesThisWeek, overdueTasksCount: overdueTasks, stats });
       }
     }
 
@@ -335,7 +337,7 @@ Return ONLY valid JSON:
       advice = 'Try to defer or delegate 2-3 lower priority tasks this week.';
     }
 
-    return res.json({ riskLevel, message, advice, stats });
+    return res.json({ riskLevel, message, advice, totalMinutesThisWeek, overdueTasksCount: overdueTasks, stats });
   } catch (error: any) {
     return res.status(500).json({ error: error.message });
   }
@@ -713,17 +715,32 @@ Return ONLY valid JSON:
   "highlights": ["highlight 1", "highlight 2", "highlight 3"]
 }`;
 
+    // WeeklyReviewView.tsx expects: totalFocusHours (not totalFocusMinutes),
+    // tasksCompleted, currentLevel (not level), categories (with name/percentage,
+    // not topCategories with category/count), and habitStats with name/completionRate
+    // (not title/completionRate7d). Shape the response to that contract directly.
+    const totalFocusHours = Math.round((totalFocusMinutes / 60) * 10) / 10;
+    const categories = topCategories.map(c => ({
+      name: c.category,
+      count: c.count,
+      percentage: doneTasks.length > 0 ? Math.round((c.count / doneTasks.length) * 100) : 0
+    }));
+    const shapedHabitStats = habitStats.map(h => ({
+      name: h.title,
+      completionRate: h.completionRate7d
+    }));
+
     const raw = await queryLLM(prompt, 600);
     if (raw) {
       const parsed = parseAiJson<any>(raw);
       if (parsed?.summary) {
         return res.json({
           completionRate,
-          topCategories,
-          totalFocusMinutes,
-          xp: user?.xp || 0,
-          level: user?.level || 1,
-          habitStats,
+          categories,
+          totalFocusHours,
+          tasksCompleted: doneTasks.length,
+          currentLevel: user?.level || 1,
+          habitStats: shapedHabitStats,
           ...parsed
         });
       }
@@ -735,11 +752,11 @@ Return ONLY valid JSON:
     const highlights: string[] = [];
 
     if (completionRate >= 80) {
-      summary = `Excellent week! You completed ${doneTasks.length} of ${tasks.length} tasks (${completionRate}%). Your focus time was ${Math.round(totalFocusMinutes / 60 * 10) / 10} hours.`;
+      summary = `Excellent week! You completed ${doneTasks.length} of ${tasks.length} tasks (${completionRate}%). Your focus time was ${totalFocusHours} hours.`;
       improvement = 'Consider adding stretch goals next week to keep growing.';
       highlights.push('High completion rate this week!');
     } else if (completionRate >= 50) {
-      summary = `Solid week with ${completionRate}% task completion. You logged ${Math.round(totalFocusMinutes / 60 * 10) / 10} hours of focus time.`;
+      summary = `Solid week with ${completionRate}% task completion. You logged ${totalFocusHours} hours of focus time.`;
       improvement = 'Try time-blocking your calendar to protect deep work hours.';
       highlights.push('Good progress on tasks');
     } else {
@@ -749,15 +766,15 @@ Return ONLY valid JSON:
     }
 
     if (topCategories.length > 0) highlights.push(`Most productive area: ${topCategories[0].category}`);
-    if (totalFocusMinutes > 0) highlights.push(`${Math.round(totalFocusMinutes / 60 * 10) / 10}h total focus time logged`);
+    if (totalFocusMinutes > 0) highlights.push(`${totalFocusHours}h total focus time logged`);
 
     return res.json({
       completionRate,
-      topCategories,
-      totalFocusMinutes,
-      xp: user?.xp || 0,
-      level: user?.level || 1,
-      habitStats,
+      categories,
+      totalFocusHours,
+      tasksCompleted: doneTasks.length,
+      currentLevel: user?.level || 1,
+      habitStats: shapedHabitStats,
       summary,
       improvement,
       highlights

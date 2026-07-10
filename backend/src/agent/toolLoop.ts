@@ -45,28 +45,33 @@ export async function runNimToolLoop(
     });
 
     if (response.toolCalls && response.toolCalls.length > 0) {
-      messages.push({ role: 'assistant', content: response.content, tool_calls: response.toolCalls });
+      // This NIM-hosted model's chat template only supports a single tool call
+      // per assistant turn (returning more than one causes a 500 on the *next*
+      // request, once that turn is replayed back as history). If the model
+      // proposes several at once, honor only the first — it will see that
+      // tool's result and can propose the next one on a later turn.
+      const call = response.toolCalls[0];
+      messages.push({ role: 'assistant', content: response.content, tool_calls: [call] });
 
-      for (const call of response.toolCalls) {
-        let args: any = {};
-        try {
-          args = JSON.parse(call.function.arguments || '{}');
-        } catch {
-          // leave args empty; executor will report a missing-field error
-        }
-
-        let execResult: ToolExecutionResult;
-        try {
-          execResult = await executeAgentTool(call.function.name, args, ctx);
-        } catch (err: any) {
-          execResult = { result: `Error executing ${call.function.name}: ${err.message}` };
-        }
-
-        if (execResult.suggestion) suggestions.push(execResult.suggestion);
-        if (!execResult.result.startsWith('Error')) executedLogs.push(execResult.result);
-
-        messages.push({ role: 'tool', tool_call_id: call.id, name: call.function.name, content: execResult.result });
+      let args: any = {};
+      try {
+        args = JSON.parse(call.function.arguments || '{}');
+      } catch {
+        // leave args empty; executor will report a missing-field error
       }
+
+      let execResult: ToolExecutionResult;
+      try {
+        execResult = await executeAgentTool(call.function.name, args, ctx);
+      } catch (err: any) {
+        execResult = { result: `Error executing ${call.function.name}: ${err.message}` };
+      }
+
+      if (execResult.suggestion) suggestions.push(execResult.suggestion);
+      if (!execResult.result.startsWith('Error')) executedLogs.push(execResult.result);
+
+      messages.push({ role: 'tool', tool_call_id: call.id, name: call.function.name, content: execResult.result });
+
       if (response.content) rationale = response.content;
       continue;
     }
