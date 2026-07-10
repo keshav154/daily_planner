@@ -161,7 +161,7 @@ export interface IAgentRun extends Document {
     suggestions: Array<{
       id: string;
       taskId?: string;
-      actionType: 'reorder' | 'suggest_time_block' | 'break_down' | 'nudge' | 'create_task';
+      actionType: string;
       details: Record<string, any>;
       description: string;
     }>;
@@ -184,7 +184,7 @@ const AgentRunSchema = new Schema<IAgentRun>({
     suggestions: [{
       id: { type: String, required: true },
       taskId: { type: Schema.Types.ObjectId, ref: 'Task' },
-      actionType: { type: String, enum: ['reorder', 'suggest_time_block', 'break_down', 'nudge', 'create_task'], required: true },
+      actionType: { type: String, required: true },
       details: { type: Schema.Types.Mixed },
       description: { type: String, required: true }
     }]
