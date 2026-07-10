@@ -28,7 +28,7 @@ export const queryNvidiaNim = async (
 
   const hosts = [
     'https://integrate.api.nvidia.com/v1/chat/completions',
-    'https://api.nvidia.com/v1/chat/completions'
+    'https://api.nvcf.nvidia.com/v1/chat/completions'
   ];
 
   let lastError: any = null;

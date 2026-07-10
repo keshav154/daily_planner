@@ -305,7 +305,24 @@ Format output as raw JSON only. Do not wrap in markdown \`\`\`json block.`;
     ];
 
     if (isNvidiaActive) {
-      responseText = await queryNvidiaNim(messages, process.env.NVIDIA_MODEL || 'meta/llama-3.1-70b-instruct', 0.5, 1000);
+      try {
+        responseText = await queryNvidiaNim(messages, process.env.NVIDIA_MODEL || 'meta/llama-3.1-70b-instruct', 0.5, 1000);
+      } catch (nvidiaErr) {
+        console.warn('NVIDIA NIM chat generation failed, attempting Anthropic fallback:', nvidiaErr);
+        if (anthropicApiKey && anthropicApiKey !== 'your_anthropic_api_key_here') {
+          const claudeMessages = messages.filter(m => m.role !== 'system');
+          const anthropic = new Anthropic({ apiKey: anthropicApiKey });
+          const response = await anthropic.messages.create({
+            model: 'claude-3-5-sonnet-20241022',
+            max_tokens: 1000,
+            system: systemPrompt,
+            messages: claudeMessages
+          });
+          responseText = response.content[0].type === 'text' ? response.content[0].text : '';
+        } else {
+          throw nvidiaErr;
+        }
+      }
     } else if (anthropicApiKey && anthropicApiKey !== 'your_anthropic_api_key_here') {
       const claudeMessages = messages.filter(m => m.role !== 'system');
       const anthropic = new Anthropic({ apiKey: anthropicApiKey });
@@ -534,7 +551,22 @@ Return ONLY a JSON matching this exact structure:
     const messages = [{ role: 'user' as const, content: boardroomPrompt }];
 
     if (isNvidiaActive) {
-      responseText = await queryNvidiaNim(messages, process.env.NVIDIA_MODEL || 'meta/llama-3.1-70b-instruct', 0.6, 1500);
+      try {
+        responseText = await queryNvidiaNim(messages, process.env.NVIDIA_MODEL || 'meta/llama-3.1-70b-instruct', 0.6, 1500);
+      } catch (nvidiaErr) {
+        console.warn('NVIDIA NIM boardroom debate failed, attempting Anthropic fallback:', nvidiaErr);
+        if (anthropicApiKey && anthropicApiKey !== 'your_anthropic_api_key_here') {
+          const anthropic = new Anthropic({ apiKey: anthropicApiKey });
+          const response = await anthropic.messages.create({
+            model: 'claude-3-5-sonnet-20241022',
+            max_tokens: 1500,
+            messages
+          });
+          responseText = response.content[0].type === 'text' ? response.content[0].text : '';
+        } else {
+          throw nvidiaErr;
+        }
+      }
     } else if (anthropicApiKey && anthropicApiKey !== 'your_anthropic_api_key_here') {
       const anthropic = new Anthropic({ apiKey: anthropicApiKey });
       const response = await anthropic.messages.create({

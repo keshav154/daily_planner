@@ -31,12 +31,27 @@ Return ONLY a valid JSON array of strings containing milestone names. Do not inc
   try {
     let responseText = '';
     if (isNvidiaActive) {
-      responseText = await queryNvidiaNim(
-        [{ role: 'user', content: prompt }],
-        process.env.NVIDIA_MODEL || 'meta/llama-3.1-70b-instruct',
-        0.3,
-        500
-      );
+      try {
+        responseText = await queryNvidiaNim(
+          [{ role: 'user', content: prompt }],
+          process.env.NVIDIA_MODEL || 'meta/llama-3.1-70b-instruct',
+          0.3,
+          500
+        );
+      } catch (nvidiaErr) {
+        console.warn('NVIDIA NIM milestone suggestion failed, attempting Anthropic fallback:', nvidiaErr);
+        if (isAnthropicActive) {
+          const anthropic = new Anthropic({ apiKey: anthropicKey });
+          const response = await anthropic.messages.create({
+            model: 'claude-3-5-sonnet-20241022',
+            max_tokens: 500,
+            messages: [{ role: 'user', content: prompt }]
+          });
+          responseText = response.content[0].type === 'text' ? response.content[0].text : '';
+        } else {
+          throw nvidiaErr;
+        }
+      }
     } else if (isAnthropicActive) {
       const anthropic = new Anthropic({ apiKey: anthropicKey });
       const response = await anthropic.messages.create({

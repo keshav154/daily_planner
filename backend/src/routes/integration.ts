@@ -245,9 +245,23 @@ Only output the Markdown text.`;
     const client = getAnthropicClient();
 
     if (isNvidiaActive) {
-      standupText = await queryNvidiaNim([
-        { role: 'user', content: prompt }
-      ], process.env.NVIDIA_MODEL || 'meta/llama-3.1-70b-instruct', 0.2, 500) || '';
+      try {
+        standupText = await queryNvidiaNim([
+          { role: 'user', content: prompt }
+        ], process.env.NVIDIA_MODEL || 'meta/llama-3.1-70b-instruct', 0.2, 500) || '';
+      } catch (nvidiaErr) {
+        console.warn('NVIDIA NIM standup generation failed, attempting Anthropic fallback:', nvidiaErr);
+        if (client) {
+          const response = await client.messages.create({
+            model: 'claude-3-5-sonnet-20241022',
+            max_tokens: 500,
+            messages: [{ role: 'user', content: prompt }]
+          });
+          standupText = response.content[0].type === 'text' ? response.content[0].text : '';
+        } else {
+          throw nvidiaErr;
+        }
+      }
     } else if (client) {
       const response = await client.messages.create({
         model: 'claude-3-5-sonnet-20241022',

@@ -24,24 +24,40 @@ async function queryLLM(prompt: string, maxTokens = 800): Promise<string | null>
 
   if (!isNvidiaActive && !anthropicClient) return null;
 
-  try {
-    if (isNvidiaActive) {
+  if (isNvidiaActive) {
+    try {
       return await queryNvidiaNim(
         [{ role: 'user', content: prompt }],
         process.env.NVIDIA_MODEL || 'meta/llama-3.1-70b-instruct',
         0.3,
         maxTokens
       );
-    } else if (anthropicClient) {
+    } catch (err) {
+      console.warn('[aiRoutes] NVIDIA NIM query failed, attempting Anthropic fallback:', (err as any)?.message);
+      if (anthropicClient) {
+        try {
+          const response = await anthropicClient.messages.create({
+            model: 'claude-3-5-sonnet-20241022',
+            max_tokens: maxTokens,
+            messages: [{ role: 'user', content: prompt }]
+          });
+          return response.content[0].type === 'text' ? response.content[0].text : null;
+        } catch (anthropicErr) {
+          console.error('[aiRoutes] Anthropic fallback query failed:', (anthropicErr as any)?.message);
+        }
+      }
+    }
+  } else if (anthropicClient) {
+    try {
       const response = await anthropicClient.messages.create({
         model: 'claude-3-5-sonnet-20241022',
         max_tokens: maxTokens,
         messages: [{ role: 'user', content: prompt }]
       });
       return response.content[0].type === 'text' ? response.content[0].text : null;
+    } catch (anthropicErr) {
+      console.error('[aiRoutes] Anthropic query failed:', (anthropicErr as any)?.message);
     }
-  } catch (err) {
-    console.warn('[aiRoutes] LLM query failed:', (err as any)?.message);
   }
   return null;
 }
