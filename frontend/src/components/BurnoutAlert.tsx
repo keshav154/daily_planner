@@ -1,14 +1,9 @@
 import React, { useState, useEffect } from 'react';
 import api from '../services/api';
 import { X } from 'lucide-react';
+import type { BurnoutStatusResponse } from '../../../backend/src/types/apiContracts';
 
-interface BurnoutStatus {
-  riskLevel: 'low' | 'medium' | 'high';
-  message: string;
-  advice?: string;
-  totalMinutesThisWeek: number;
-  overdueTasksCount: number;
-}
+type BurnoutStatus = BurnoutStatusResponse;
 
 export const BurnoutAlert: React.FC = () => {
   const [status, setStatus] = useState<BurnoutStatus | null>(null);

@@ -1,6 +1,7 @@
 import mongoose from 'mongoose';
 import { Task, AgentMemory } from '../models/Schemas';
 import { Goal } from '../models/Goal';
+import Habit from '../models/Habit';
 import { getRelevantMemories } from '../services/similarity';
 import { ToolSchema } from '../config/nvidia';
 
@@ -166,6 +167,78 @@ export const AGENT_TOOLS: ToolSchema[] = [
   }
 ];
 
+/**
+ * Extra tools only relevant to the interactive chat assistant, where the user
+ * explicitly drives one intent at a time (delete a task, add a habit, create a
+ * goal, complete a milestone) rather than the autonomous background loop,
+ * which never needs to delete data or create new goals/habits on its own.
+ */
+const CHAT_ONLY_TOOLS: ToolSchema[] = [
+  {
+    type: 'function',
+    function: {
+      name: 'delete_task',
+      description: 'Permanently delete a task the user asked to remove.',
+      parameters: {
+        type: 'object',
+        properties: {
+          taskId: { type: 'string' }
+        },
+        required: ['taskId']
+      }
+    }
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'add_habit',
+      description: 'Create a new recurring habit to track.',
+      parameters: {
+        type: 'object',
+        properties: {
+          title: { type: 'string' },
+          frequency: { type: 'string', enum: ['daily', 'weekdays', 'custom'] },
+          icon: { type: 'string', description: 'A single emoji representing the habit' }
+        },
+        required: ['title']
+      }
+    }
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'create_goal',
+      description: 'Create a new long-term goal with default milestones.',
+      parameters: {
+        type: 'object',
+        properties: {
+          title: { type: 'string' },
+          description: { type: 'string' },
+          deadline: { type: 'string', description: 'ISO date, optional' }
+        },
+        required: ['title']
+      }
+    }
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'complete_milestone',
+      description: 'Mark a milestone on one of the user\'s goals as completed.',
+      parameters: {
+        type: 'object',
+        properties: {
+          goalId: { type: 'string' },
+          milestoneIndex: { type: 'number' }
+        },
+        required: ['goalId', 'milestoneIndex']
+      }
+    }
+  }
+];
+
+export const CHAT_TOOLS: ToolSchema[] = [...AGENT_TOOLS, ...CHAT_ONLY_TOOLS];
+
 function summarizeTasks(tasks: any[]): string {
   if (tasks.length === 0) return 'No matching tasks.';
   return JSON.stringify(
@@ -316,6 +389,62 @@ export async function executeAgentTool(
           details: { orderedTaskIds: args.orderedTaskIds }
         }
       };
+    }
+
+    case 'delete_task': {
+      const task = await Task.findOne({ _id: args.taskId, userId });
+      if (!task) return { result: `Error: task ${args.taskId} not found.` };
+      await Task.deleteOne({ _id: args.taskId, userId });
+      return { result: `Deleted task "${task.title}".` };
+    }
+
+    case 'add_habit': {
+      if (!args.title) return { result: 'Error: title is required.' };
+      const habit = new Habit({
+        userId,
+        title: args.title,
+        frequency: args.frequency || 'daily',
+        icon: args.icon || '✨',
+        completions: [],
+        currentStreak: 0,
+        longestStreak: 0,
+        isActive: true
+      });
+      await habit.save();
+      return { result: `Added habit "${habit.title}" (id: ${habit._id.toString()})` };
+    }
+
+    case 'create_goal': {
+      if (!args.title) return { result: 'Error: title is required.' };
+      const goal = new Goal({
+        userId,
+        title: args.title,
+        description: args.description || '',
+        deadline: args.deadline ? new Date(args.deadline) : undefined,
+        milestones: [
+          { title: 'Define scope and roadmap', completed: false },
+          { title: 'Implement key logic steps', completed: false },
+          { title: 'Validate and review milestones', completed: false }
+        ],
+        status: 'active',
+        agentNotes: ['Goal created via conversational AI interface.']
+      });
+      await goal.save();
+      return { result: `Created goal "${goal.title}" (id: ${goal._id.toString()})` };
+    }
+
+    case 'complete_milestone': {
+      const goal = await Goal.findOne({ _id: args.goalId, userId });
+      if (!goal) return { result: `Error: goal ${args.goalId} not found.` };
+      const idx = Number(args.milestoneIndex);
+      if (isNaN(idx) || idx < 0 || idx >= goal.milestones.length) {
+        return { result: 'Error: milestoneIndex out of bounds.' };
+      }
+      goal.milestones[idx].completed = true;
+      goal.milestones[idx].completedAt = now;
+      goal.agentNotes.push(`Milestone "${goal.milestones[idx].title}" completed via chat (${now.toLocaleDateString()}).`);
+      await goal.save();
+      return { result: `Completed milestone "${goal.milestones[idx].title}" for goal "${goal.title}".` };
     }
 
     default:

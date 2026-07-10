@@ -62,28 +62,34 @@ ${JSON.stringify(memoryList, null, 2)}
 
 Instructions:
 1. Identify overlaps. For example, if there are two memories saying "You underestimate design tasks" and "Design tasks take you 30% longer than planned", merge them.
-2. Return a JSON array of the consolidated memories.
+2. Return the consolidated memories as a JSON array under the "consolidated" key.
 3. Each item in the array MUST list the IDs of the original memories that were merged into it (mergedIds), so we can archive the duplicates.
 4. For each consolidated memory, assign an importance rating between 1 and 10.
 
-Return ONLY a valid JSON array:
-[
-  {
-    "content": "Consolidated memory string...",
-    "category": "estimation|productivity|scheduling",
-    "importance": 7,
-    "mergedIds": ["id_1", "id_2"]
-  }
-]`;
+Return ONLY a valid JSON object:
+{
+  "consolidated": [
+    {
+      "content": "Consolidated memory string...",
+      "category": "estimation|productivity|scheduling",
+      "importance": 7,
+      "mergedIds": ["id_1", "id_2"]
+    }
+  ]
+}`;
 
   try {
     let responseText = '';
     if (isNvidiaActive) {
+      // jsonMode (NIM's response_format: json_object) only guarantees a valid
+      // top-level *object*, not a bare array — hence wrapping the array in a
+      // "consolidated" key above instead of asking for `[...]` directly.
       responseText = await queryNvidiaNim(
         [{ role: 'user', content: prompt }],
         process.env.NVIDIA_MODEL || 'meta/llama-3.3-70b-instruct',
         0.3,
-        1000
+        1000,
+        true
       );
     } else if (isAnthropicActive) {
       const anthropic = new Anthropic({ apiKey: anthropicKey });
@@ -95,9 +101,10 @@ Return ONLY a valid JSON array:
       responseText = response.content[0].type === 'text' ? response.content[0].text : '';
     }
 
-    const parsed = parseAiJson<any[]>(responseText);
-    if (Array.isArray(parsed)) {
-      return parsed;
+    const parsed = parseAiJson<any>(responseText);
+    const consolidated = Array.isArray(parsed) ? parsed : parsed?.consolidated;
+    if (Array.isArray(consolidated)) {
+      return consolidated;
     }
   } catch (err) {
     console.error('[Consolidation] AI consolidation call failed:', err);

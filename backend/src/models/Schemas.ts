@@ -200,6 +200,10 @@ export interface IAgentRun extends Document {
     status: 'pending' | 'accepted' | 'rejected';
     resolvedAt?: Date;
   }>;
+  // Human-readable log lines for tool calls the agent already executed directly
+  // (e.g. create_task, defer_task) — distinct from `planOutput.suggestions`,
+  // which are proposals still awaiting user approval.
+  executedActions: string[];
   createdAt: Date;
 }
 
@@ -223,6 +227,7 @@ const AgentRunSchema = new Schema<IAgentRun>({
     status: { type: String, enum: ['pending', 'accepted', 'rejected'], default: 'pending' },
     resolvedAt: { type: Date }
   }],
+  executedActions: [{ type: String }],
   createdAt: { type: Date, default: Date.now }
 });
 

@@ -200,6 +200,7 @@ Review goal timelines, habit streaks, task load, and overdue tasks as described 
         rationale: planOutput.rationale || `Triggered by ${trigger}`,
         suggestions: planOutput.suggestions
       },
+      executedActions: executedLogs,
       actionsTaken: planOutput.suggestions.map((s: any) => ({
         suggestionId: s.id,
         actionType: s.actionType,

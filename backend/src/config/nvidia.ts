@@ -131,9 +131,10 @@ export const queryNvidiaNim = async (
   messages: ChatMessage[],
   model: string = process.env.NVIDIA_MODEL || 'meta/llama-3.3-70b-instruct',
   temperature: number = 0.2,
-  maxTokens: number = 1000
+  maxTokens: number = 1000,
+  jsonMode: boolean = false
 ): Promise<string> => {
-  const result = await queryNvidiaNimChat(messages, { model, temperature, maxTokens });
+  const result = await queryNvidiaNimChat(messages, { model, temperature, maxTokens, jsonMode });
   return result.content || '';
 };
 

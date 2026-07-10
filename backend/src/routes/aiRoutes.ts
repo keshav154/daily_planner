@@ -5,6 +5,7 @@ import { AuthRequest } from '../middleware/auth';
 import Habit from '../models/Habit';
 import { queryNvidiaNim } from '../config/nvidia';
 import Anthropic from '@anthropic-ai/sdk';
+import type { BurnoutStatusResponse, WeeklyReviewResponse } from '../types/apiContracts';
 
 // ─── Shared AI Client Helpers ─────────────────────────────────────────────────
 
@@ -26,11 +27,15 @@ async function queryLLM(prompt: string, maxTokens = 800): Promise<string | null>
 
   if (isNvidiaActive) {
     try {
+      // Every prompt through this helper asks for "Return ONLY valid JSON" —
+      // jsonMode constrains the decoder so malformed JSON can't come back,
+      // instead of relying on parseAiJson's regex-based repair.
       return await queryNvidiaNim(
         [{ role: 'user', content: prompt }],
         process.env.NVIDIA_MODEL || 'meta/llama-3.3-70b-instruct',
         0.3,
-        maxTokens
+        maxTokens,
+        true
       );
     } catch (err) {
       console.warn('[aiRoutes] NVIDIA NIM query failed, attempting Anthropic fallback:', (err as any)?.message);
@@ -98,22 +103,25 @@ router.post('/decompose-task', async (req: Request, res: Response) => {
     const prompt = `You are a productivity expert. Break the following goal into 3-7 actionable subtasks.
 Goal: "${goal}"
 
-Return ONLY valid JSON array with no explanation or markdown:
-[
-  {
-    "title": "task title",
-    "estimatedTime": 30,
-    "priority": "high|medium|low",
-    "category": "Work|Personal|Health|Learning",
-    "subtasks": ["optional subtask 1", "optional subtask 2"]
-  }
-]`;
+Return ONLY valid JSON with no explanation or markdown, as an object with a "tasks" array:
+{
+  "tasks": [
+    {
+      "title": "task title",
+      "estimatedTime": 30,
+      "priority": "high|medium|low",
+      "category": "Work|Personal|Health|Learning",
+      "subtasks": ["optional subtask 1", "optional subtask 2"]
+    }
+  ]
+}`;
 
     const raw = await queryLLM(prompt, 600);
     if (raw) {
-      const parsed = parseAiJson<any[]>(raw);
-      if (parsed && Array.isArray(parsed)) {
-        return res.json({ tasks: parsed });
+      const parsed = parseAiJson<any>(raw);
+      const parsedTasks = Array.isArray(parsed) ? parsed : parsed?.tasks;
+      if (Array.isArray(parsedTasks)) {
+        return res.json({ tasks: parsedTasks });
       }
     }
 
@@ -149,22 +157,25 @@ Meeting Notes:
 ${notes}
 """
 
-Return ONLY valid JSON array:
-[
-  {
-    "title": "action item title",
-    "priority": "high|medium|low",
-    "estimatedTime": 30,
-    "dueDate": "${dueDateStr}",
-    "category": "Work|Personal|Health|Learning"
-  }
-]`;
+Return ONLY valid JSON as an object with a "tasks" array:
+{
+  "tasks": [
+    {
+      "title": "action item title",
+      "priority": "high|medium|low",
+      "estimatedTime": 30,
+      "dueDate": "${dueDateStr}",
+      "category": "Work|Personal|Health|Learning"
+    }
+  ]
+}`;
 
     const raw = await queryLLM(prompt, 600);
     if (raw) {
-      const parsed = parseAiJson<any[]>(raw);
-      if (parsed && Array.isArray(parsed)) {
-        return res.json({ tasks: parsed });
+      const parsed = parseAiJson<any>(raw);
+      const parsedTasks = Array.isArray(parsed) ? parsed : parsed?.tasks;
+      if (Array.isArray(parsedTasks)) {
+        return res.json({ tasks: parsedTasks });
       }
     }
 
@@ -312,13 +323,21 @@ Return ONLY valid JSON:
   "advice": "one concrete actionable suggestion"
 }`;
 
-    // Frontend (BurnoutAlert.tsx) reads totalMinutesThisWeek/overdueTasksCount at the
-    // top level of the response, so both are included alongside the nested `stats`.
+    // Typed against BurnoutStatusResponse so a field rename here breaks the
+    // build instead of silently producing a blank value in BurnoutAlert.tsx.
     const raw = await queryLLM(prompt, 400);
     if (raw) {
       const parsed = parseAiJson<any>(raw);
       if (parsed?.riskLevel) {
-        return res.json({ ...parsed, totalMinutesThisWeek, overdueTasksCount: overdueTasks, stats });
+        const response: BurnoutStatusResponse = {
+          riskLevel: parsed.riskLevel,
+          message: parsed.message,
+          advice: parsed.advice,
+          totalMinutesThisWeek,
+          overdueTasksCount: overdueTasks,
+          stats
+        };
+        return res.json(response);
       }
     }
 
@@ -337,7 +356,15 @@ Return ONLY valid JSON:
       advice = 'Try to defer or delegate 2-3 lower priority tasks this week.';
     }
 
-    return res.json({ riskLevel, message, advice, totalMinutesThisWeek, overdueTasksCount: overdueTasks, stats });
+    const response: BurnoutStatusResponse = {
+      riskLevel,
+      message,
+      advice,
+      totalMinutesThisWeek,
+      overdueTasksCount: overdueTasks,
+      stats
+    };
+    return res.json(response);
   } catch (error: any) {
     return res.status(500).json({ error: error.message });
   }
@@ -730,19 +757,24 @@ Return ONLY valid JSON:
       completionRate: h.completionRate7d
     }));
 
+    // Typed against WeeklyReviewResponse so a field rename here breaks the
+    // build instead of silently rendering "N/A"/"0h" in WeeklyReviewView.tsx.
     const raw = await queryLLM(prompt, 600);
     if (raw) {
       const parsed = parseAiJson<any>(raw);
       if (parsed?.summary) {
-        return res.json({
+        const response: WeeklyReviewResponse = {
           completionRate,
           categories,
           totalFocusHours,
           tasksCompleted: doneTasks.length,
           currentLevel: user?.level || 1,
           habitStats: shapedHabitStats,
-          ...parsed
-        });
+          summary: parsed.summary,
+          improvement: parsed.improvement,
+          highlights: parsed.highlights || []
+        };
+        return res.json(response);
       }
     }
 
@@ -768,7 +800,7 @@ Return ONLY valid JSON:
     if (topCategories.length > 0) highlights.push(`Most productive area: ${topCategories[0].category}`);
     if (totalFocusMinutes > 0) highlights.push(`${totalFocusHours}h total focus time logged`);
 
-    return res.json({
+    const response: WeeklyReviewResponse = {
       completionRate,
       categories,
       totalFocusHours,
@@ -778,7 +810,8 @@ Return ONLY valid JSON:
       summary,
       improvement,
       highlights
-    });
+    };
+    return res.json(response);
   } catch (error: any) {
     return res.status(500).json({ error: error.message });
   }

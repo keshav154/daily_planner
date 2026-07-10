@@ -1,11 +1,23 @@
 import Anthropic from '@anthropic-ai/sdk';
-import { queryNvidiaNimChat, ChatMessage } from '../config/nvidia';
+import { queryNvidiaNimChat, ChatMessage, ToolSchema } from '../config/nvidia';
 import { AGENT_TOOLS, executeAgentTool, ToolContext, ToolExecutionResult } from './tools';
 
 export interface ToolLoopResult {
   rationale: string;
   executedLogs: string[];
   suggestions: Array<{ id: string; actionType: string; description: string; details: Record<string, any> }>;
+}
+
+export interface ToolLoopHistoryTurn {
+  role: 'user' | 'assistant';
+  content: string;
+}
+
+export interface ToolLoopOptions {
+  /** Tool set for this loop; defaults to the background-agent tool set. */
+  tools?: ToolSchema[];
+  /** Prior conversation turns to seed before the new user prompt (for chat). */
+  history?: ToolLoopHistoryTurn[];
 }
 
 const MAX_ITERATIONS = 6;
@@ -25,10 +37,13 @@ function synthesizeFallbackRationale(executedLogs: string[]): string {
 export async function runNimToolLoop(
   systemPrompt: string,
   userPrompt: string,
-  ctx: ToolContext
+  ctx: ToolContext,
+  options: ToolLoopOptions = {}
 ): Promise<ToolLoopResult> {
+  const tools = options.tools || AGENT_TOOLS;
   const messages: ChatMessage[] = [
     { role: 'system', content: systemPrompt },
+    ...(options.history || []).map((h): ChatMessage => ({ role: h.role, content: h.content })),
     { role: 'user', content: userPrompt }
   ];
 
@@ -38,7 +53,7 @@ export async function runNimToolLoop(
 
   for (let i = 0; i < MAX_ITERATIONS; i++) {
     const response = await queryNvidiaNimChat(messages, {
-      tools: AGENT_TOOLS,
+      tools,
       toolChoice: 'auto',
       temperature: 0.3,
       maxTokens: 1200

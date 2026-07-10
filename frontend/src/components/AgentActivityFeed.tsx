@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import api from '../services/api';
-import { 
-  Activity, RefreshCw, Cpu, CheckCircle2, AlertTriangle, AlertCircle, Info, ChevronRight, Loader2
+import {
+  Activity, RefreshCw, Cpu, CheckCircle2, AlertTriangle, AlertCircle, Info, ChevronRight, Loader2, Zap
 } from 'lucide-react';
 
 interface LogEntry {
@@ -14,8 +14,12 @@ interface AgentRun {
   _id: string;
   trigger: string;
   createdAt: string;
+  // Tool calls the agent already executed directly this run (create_task,
+  // defer_task, etc.) — already applied, nothing to approve.
+  executedActions?: string[];
   planOutput: {
     rationale: string;
+    // Proposals still awaiting user approval (e.g. bulk reorders).
     suggestions: Array<{
       id: string;
       actionType: string;
@@ -154,9 +158,23 @@ export const AgentActivityFeed: React.FC = () => {
                     <p className="text-[11px] leading-relaxed font-sans font-bold">{run.planOutput.rationale}</p>
                   </div>
 
+                  {run.executedActions && run.executedActions.length > 0 && (
+                    <div className="space-y-1.5 pt-1">
+                      <div className="text-[9px] uppercase font-black text-emerald-600 dark:text-emerald-400">Actions Taken</div>
+                      <div className="space-y-1">
+                        {run.executedActions.map((action, idx) => (
+                          <div key={idx} className="flex gap-1.5 items-start text-[10px] font-bold">
+                            <Zap className="w-3.5 h-3.5 text-emerald-500 dark:text-emerald-400 mt-0.5 shrink-0" />
+                            <span>{action}</span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
                   {run.planOutput.suggestions && run.planOutput.suggestions.length > 0 && (
                     <div className="space-y-1.5 pt-1">
-                      <div className="text-[9px] uppercase font-black text-neutral-500 dark:text-neutral-400">Generated Actions</div>
+                      <div className="text-[9px] uppercase font-black text-neutral-500 dark:text-neutral-400">Suggestions Pending Approval</div>
                       <div className="space-y-1">
                         {run.planOutput.suggestions.map((s, idx) => (
                           <div key={idx} className="flex gap-1.5 items-start text-[10px] font-bold">

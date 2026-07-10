@@ -515,10 +515,12 @@ Format output as raw JSON only. Do not wrap in markdown \`\`\`json block.`;
 router.get('/autonomous-status', authenticateToken, async (req: AuthRequest, res: Response) => {
   try {
     const { backgroundLogs } = require('../services/backgroundPlanner');
-    // Also fetch the last few background agent runs
+    // Also fetch the last few background agent runs. Trigger values are set in
+    // backgroundPlanner.ts — background_hourly_check is the autonomous
+    // Think-Act-Observe loop, background_auto_plan is the morning planner.
     const recentBackgroundRuns = await AgentRun.find({
       userId: req.userId,
-      trigger: { $in: ['background_auto_plan', 'background_auto_reflect'] }
+      trigger: { $in: ['background_hourly_check', 'background_auto_plan'] }
     })
       .sort({ createdAt: -1 })
       .limit(5);

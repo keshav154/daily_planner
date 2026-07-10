@@ -1,29 +1,9 @@
 import React, { useState, useEffect } from 'react';
 import api from '../services/api';
 import { BarChart2, TrendingUp, Clock, CheckCircle2, Zap } from 'lucide-react';
+import type { WeeklyReviewResponse } from '../../../backend/src/types/apiContracts';
 
-interface CategoryStat {
-  name: string;
-  percentage: number;
-  count: number;
-}
-
-interface HabitStat {
-  name: string;
-  completionRate: number;
-}
-
-interface WeeklyReviewData {
-  completionRate: number;
-  totalFocusHours: number;
-  tasksCompleted: number;
-  currentLevel: number | string;
-  summary: string;
-  categories: CategoryStat[];
-  habitStats: HabitStat[];
-  highlights: string[];
-  improvement: string;
-}
+type WeeklyReviewData = WeeklyReviewResponse;
 
 export const WeeklyReviewView: React.FC = () => {
   const [data, setData] = useState<WeeklyReviewData | null>(null);
