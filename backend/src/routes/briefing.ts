@@ -73,10 +73,11 @@ router.get('/daily', async (req: Request, res: Response) => {
 
     const agentActions = recentRuns
       .flatMap(r => r.executedActions || [])
-      // Older runs logged raw read-tool output (JSON dumps) into
-      // executedActions before those were excluded — filter them out so the
-      // digest only shows human-readable action sentences.
-      .filter(a => a && !a.startsWith('[') && !a.startsWith('{') && a !== 'No matching tasks.')
+      // Older runs logged raw read-tool output (JSON dumps) and dedupe-guard
+      // "Skipped: ..." bookkeeping messages into executedActions before those
+      // were excluded at the source — filter them out so the digest only
+      // shows human-readable, user-relevant action sentences.
+      .filter(a => a && !a.startsWith('[') && !a.startsWith('{') && !a.startsWith('Skipped') && a !== 'No matching tasks.')
       .slice(0, 8);
     const pendingSuggestionsCount = recentRuns.reduce(
       (acc, r) => acc + r.actionsTaken.filter(a => a.status === 'pending').length,

@@ -41,6 +41,17 @@ function isUsableRationale(text: string | null | undefined): boolean {
 }
 
 /**
+ * A tool result is only a reportable "action taken" if something actually
+ * changed. "Error: ..." means it failed; "Skipped: ..." means a dedupe guard
+ * refused it (e.g. an identical task/note already exists) — both are internal
+ * bookkeeping, not user-visible actions, and must not leak into the activity
+ * feed or the "while you were away" briefing digest.
+ */
+function isReportableAction(result: string): boolean {
+  return !result.startsWith('Error') && !result.startsWith('Skipped');
+}
+
+/**
  * Runs a real Think-Act-Observe tool-calling loop against NVIDIA NIM
  * (OpenAI-compatible function calling). The model decides which tools to
  * call, sees the results, and can call more tools in response — instead of
@@ -97,7 +108,7 @@ export async function runNimToolLoop(
       if (execResult.suggestion) suggestions.push(execResult.suggestion);
       // Read-only tools (get_tasks, search_memories) inform the model but are
       // not user-visible "actions taken".
-      if (!execResult.result.startsWith('Error') && !READ_ONLY_TOOLS.has(call.function.name)) {
+      if (isReportableAction(execResult.result) && !READ_ONLY_TOOLS.has(call.function.name)) {
         executedLogs.push(execResult.result);
       }
 
@@ -176,7 +187,7 @@ export async function runAnthropicToolLoop(
         if (execResult.suggestion) suggestions.push(execResult.suggestion);
         // Read-only tools (get_tasks, search_memories) inform the model but are
         // not user-visible "actions taken".
-        if (!execResult.result.startsWith('Error') && !READ_ONLY_TOOLS.has(block.name)) {
+        if (isReportableAction(execResult.result) && !READ_ONLY_TOOLS.has(block.name)) {
           executedLogs.push(execResult.result);
         }
 

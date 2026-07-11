@@ -409,6 +409,9 @@ export async function executeAgentTool(
 
     case 'create_nudge_memory': {
       if (!args.content) return { result: 'Error: content is required.' };
+      if (!hasSufficientQuality(args.content)) {
+        return { result: `Error: content is too brief to be a useful nudge ("${args.content}"). Write a full sentence with specifics — what is at risk and what the user should do about it.` };
+      }
       const category = (args.category || 'productivity').toLowerCase();
 
       // The hourly loop re-detects the same condition every cycle (e.g. a
@@ -560,6 +563,17 @@ export async function executeAgentTool(
     default:
       return { result: `Error: unknown tool "${name}".` };
   }
+}
+
+/**
+ * Rejects bare, low-information memory content ("Habit streak at risk") that
+ * carries no actionable specifics. Models sometimes emit a title-length stub
+ * instead of following the tool description's instruction to be concrete —
+ * this enforces that at write time instead of trusting the prompt.
+ */
+function hasSufficientQuality(content: string): boolean {
+  const words = content.trim().split(/\s+/).filter(Boolean);
+  return words.length >= 6 && content.trim().length >= 25;
 }
 
 function computeEndTime(startTime: string, durationMinutes: number): string {

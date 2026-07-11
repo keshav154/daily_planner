@@ -300,12 +300,12 @@ export const HabitTrackerView: React.FC = () => {
                       const coachEntry = coaching.find((c: any) => c.habitId === habit._id);
                       if (!coachEntry) return null;
                       return (
-                        <div className="mt-3 px-3 py-2.5 rounded-lg bg-indigo-950/30 border border-indigo-500/15">
+                        <div className="mt-3 px-3 py-2.5 rounded-lg bg-indigo-50 dark:bg-indigo-950/30 border border-indigo-200 dark:border-indigo-500/15">
                           {coachEntry.message && (
-                            <p className="text-[11px] text-indigo-300 font-medium leading-relaxed">{coachEntry.message}</p>
+                            <p className="text-[11px] text-indigo-900 dark:text-indigo-300 font-medium leading-relaxed">{coachEntry.message}</p>
                           )}
                           {coachEntry.tip && (
-                            <p className="text-[10px] text-indigo-400/70 mt-1 font-semibold">💡 {coachEntry.tip}</p>
+                            <p className="text-[10px] text-indigo-700 dark:text-indigo-400/70 mt-1 font-semibold">💡 {coachEntry.tip}</p>
                           )}
                         </div>
                       );

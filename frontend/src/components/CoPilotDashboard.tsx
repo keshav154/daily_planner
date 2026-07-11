@@ -1,8 +1,9 @@
 import React, { useState, useEffect } from 'react';
 import api from '../services/api';
-import { 
+import {
   Cpu, Heart, Plus, CheckCircle, Trash2, Terminal, Loader2
 } from 'lucide-react';
+import { getMemoryBadges } from '../utils/memoryLabels';
 
 interface Memory {
   _id: string;
@@ -207,13 +208,17 @@ export const CoPilotDashboard: React.FC = () => {
                     className="glass-panel p-4 flex items-start justify-between gap-4"
                   >
                     <div className="space-y-1.5 flex-1 min-w-0">
-                      <div className="flex items-center gap-2">
-                        <span className="text-[9px] font-black bg-[#C4B5FD] text-black px-2 py-0.5 rounded-none border-2 border-black uppercase shadow-[1px_1px_0px_0px_rgba(0,0,0,1)]">
-                          {m.type}
-                        </span>
-                        <span className="text-[9px] font-black bg-[#FFD93D] text-black px-2 py-0.5 rounded-none border-2 border-black uppercase shadow-[1px_1px_0px_0px_rgba(0,0,0,1)]">
-                          {m.category}
-                        </span>
+                      <div className="flex items-center gap-2 flex-wrap">
+                        {getMemoryBadges(m.type, m.category).map((label, idx) => (
+                          <span
+                            key={idx}
+                            className={`text-[9px] font-black px-2 py-0.5 rounded-none border-2 border-black uppercase shadow-[1px_1px_0px_0px_rgba(0,0,0,1)] ${
+                              idx === 0 ? 'bg-[#C4B5FD] text-black' : 'bg-[#FFD93D] text-black'
+                            }`}
+                          >
+                            {label}
+                          </span>
+                        ))}
                       </div>
                       <p className="text-xs text-black dark:text-neutral-200 leading-relaxed font-bold font-sans">{m.content}</p>
                     </div>
