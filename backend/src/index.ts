@@ -16,6 +16,7 @@ import aiRoutes from './routes/aiRoutes';
 import goalRoutes from './routes/goals';
 import integrationRoutes from './routes/integration';
 import memoryRoutes from './routes/memoryRoutes';
+import notificationRoutes from './routes/notifications';
 import { authenticateToken } from './middleware/auth';
 
 // Load environment variables
@@ -57,6 +58,7 @@ app.use('/api/ai', authenticateToken, aiRoutes);
 app.use('/api/goals', authenticateToken, goalRoutes);
 app.use('/api/integration', integrationRoutes);
 app.use('/api/memories', memoryRoutes);
+app.use('/api/notifications', notificationRoutes);
 
 // Global Error Handler
 app.use((err: any, req: express.Request, res: express.Response, next: express.NextFunction) => {

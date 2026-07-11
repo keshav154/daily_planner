@@ -5,6 +5,7 @@ import { Goal } from '../models/Goal';
 import { parseNaturalLanguageTask } from '../agent/parser';
 import { handleTaskResolution } from '../services/resolutionHook';
 import { queryNvidiaNim } from '../config/nvidia';
+import { findSimilarMemory } from '../services/similarity';
 import Anthropic from '@anthropic-ai/sdk';
 
 const router = Router();
@@ -169,22 +170,31 @@ router.post('/task/:id/complete', async (req: Request, res: Response) => {
 });
 
 // 4. POST /api/integration/memory
-// Ingest long-term facts/cheat-sheets autonomously
+// Direct memory capture from external tools (phone Shortcuts, browser
+// bookmarklet, scripts) authenticated with the user's personal API key. This
+// is first-party user input — same as chat's remember_fact — so it's tagged
+// source:'user' (always injected into every agent context, never needs
+// review) rather than 'autonomous' (which is agent-generated and reviewed).
 router.post('/memory', async (req: Request, res: Response) => {
   try {
     const userId = (req as any).userId;
-    const { content, category, importance } = req.body;
+    const { content, category, importance, type } = req.body;
 
     if (!content) return res.status(400).json({ error: 'Provide "content" string' });
 
+    const dedupe = await findSimilarMemory(userId, content);
+    if (dedupe) {
+      return res.status(200).json({ message: 'Already remembered — a similar memory exists.', memory: dedupe });
+    }
+
     const newMemory = new AgentMemory({
       userId,
-      type: 'preference',
-      category: category || 'Tech Reference',
+      type: type === 'preference' ? 'preference' : 'general',
+      category: category || 'general',
       content,
-      importance: importance || 6,
+      importance: Math.min(10, Math.max(1, importance || 7)),
       feedback: 'accepted',
-      source: 'autonomous',
+      source: 'user',
       lastAccessedAt: new Date()
     });
 

@@ -13,6 +13,7 @@ export interface IUser extends Document {
   level: number;
   achievements: string[];
   apiKey: string;
+  telegramChatId?: string; // For proactive push notifications (daily briefing digest)
   preferences: {
     workingHoursStart: string; // e.g. "09:00"
     workingHoursEnd: string;   // e.g. "17:00"
@@ -23,6 +24,7 @@ export interface IUser extends Document {
     lastMorningPlanDate?: string;   // YYYY-MM-DD in user's local timezone
     lastReflectionDate?: string;    // YYYY-MM-DD in user's local timezone
     lastWeeklyReflectionDate?: string; // YYYY-MM-DD in user's local timezone
+    lastTelegramDigestDate?: string; // YYYY-MM-DD in user's local timezone
   };
   createdAt: Date;
   updatedAt: Date;
@@ -39,6 +41,7 @@ const UserSchema = new Schema<IUser>({
   level: { type: Number, default: 1 },
   achievements: [{ type: String }],
   apiKey: { type: String, unique: true, index: true },
+  telegramChatId: { type: String },
   preferences: {
     workingHoursStart: { type: String, default: '09:00' },
     workingHoursEnd: { type: String, default: '17:00' },
@@ -48,7 +51,8 @@ const UserSchema = new Schema<IUser>({
   agentState: {
     lastMorningPlanDate: { type: String },
     lastReflectionDate: { type: String },
-    lastWeeklyReflectionDate: { type: String }
+    lastWeeklyReflectionDate: { type: String },
+    lastTelegramDigestDate: { type: String }
   }
 }, { timestamps: true });
 

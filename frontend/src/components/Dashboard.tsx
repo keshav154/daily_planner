@@ -11,6 +11,7 @@ import { VirtualBoardroom } from './VirtualBoardroom';
 import { CoPilotDashboard } from './CoPilotDashboard';
 import { GoalTrackerView } from './GoalTrackerView';
 import { AgentActivityFeed } from './AgentActivityFeed';
+import { TelegramConnectWidget } from './TelegramConnectWidget';
 import { 
   Sparkles, Calendar, BookOpen, BarChart3, LogOut, User, Menu, X, 
   CalendarDays, Heart, Copy, Repeat, Sun, Moon, Brain, BarChart2, Users, Cpu, Target
@@ -171,6 +172,8 @@ export const Dashboard: React.FC = () => {
               </button>
             </div>
           )}
+
+          <TelegramConnectWidget />
 
           <button
             id="logout-btn"

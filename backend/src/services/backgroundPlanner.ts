@@ -3,6 +3,8 @@ import { runPlanningLoop, runReflectionLoop } from '../agent/loop';
 import { runAutonomousAgentLoop } from './autonomousLoop';
 import { consolidateMemories } from './memoryConsolidation';
 import { runWeeklyMetaReflection } from './weeklyReflection';
+import { buildDailyBriefing } from './briefingService';
+import { sendTelegramMessage } from './telegramNotifier';
 
 export interface BackgroundLogEntry {
   timestamp: Date;
@@ -72,6 +74,28 @@ export const runAutonomousChecks = async () => {
           user.agentState = { ...agentState, lastMorningPlanDate: userDateStr };
           await user.save();
           log('success', `Automated daily plan successfully compiled for ${user.email}.`);
+        }
+      }
+
+      // 2b. Push the morning briefing to Telegram, at most once per calendar day.
+      // This is what makes the agent reach out instead of waiting to be asked —
+      // separate guard from the planner above so it still fires even if the
+      // planner step was skipped (e.g. already ran earlier this window).
+      if (
+        userHour >= 6 && userHour < 9 &&
+        user.telegramChatId &&
+        agentState.lastTelegramDigestDate !== userDateStr
+      ) {
+        try {
+          const { briefing } = await buildDailyBriefing(userId);
+          const sent = await sendTelegramMessage(user.telegramChatId, `🧠 Kortex Morning Briefing\n\n${briefing}`);
+          if (sent) {
+            user.agentState = { ...user.agentState, lastTelegramDigestDate: userDateStr };
+            await user.save();
+            log('success', `Telegram morning briefing sent to ${user.email}.`);
+          }
+        } catch (telegramErr: any) {
+          log('warn', `Failed to send Telegram briefing to ${user.email}: ${telegramErr.message}`);
         }
       }
 
