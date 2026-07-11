@@ -54,54 +54,17 @@ export const AgentMemoryView: React.FC = () => {
 
     setSubmittingCustom(true);
     try {
-      // Simulate adding a manual preference memory insight
-      // In the backend, a custom rule-based memory insertion
-      await api.post('/logs', {
-        title: `Added preference: ${customContent}`,
-        duration: 0,
-        notes: `AI Memory Preference Injection`
+      await api.post('/agent/memories', {
+        content: customContent,
+        type: 'preference',
+        category: 'scheduling'
       });
-
-      // Let's create an actual preference memory
-      // We can use a trick: the reflect route creates insights from logs.
-      // But we can also add a small utility or mock memory. Let's send a fake reflection request,
-      // or directly trigger a reflection with the custom text.
-      // Better yet, we can mock adding the custom memory or just write a small backend call if needed,
-      // but since we want the memory in AgentMemory, let's create a new log that contains the key term
-      // and trigger reflection, or we can just call the reflect route.
-      // Wait, we can just edit the backend or write a direct memory adder!
-      // Wait, our backend routes doesn't have a direct "POST /api/agent/memories" in Schemas, 
-      // but wait! We can add a POST route to backend agent routes or we can just mock-insert it via log 
-      // or simply add the endpoint to agent.ts.
-      // Let's look at c:\Users\Keshav\Documents\daily-planner\backend\src\routes\agent.ts.
-      // Ah! We didn't define a POST /api/agent/memories.
-      // Let's add it or write to it directly!
-      // Wait! We can just modify the backend file agent.ts to add a `POST /` memory creation endpoint.
-      // This is extremely simple and clean!
-      // Let's do that in a bit. For now, let's write the frontend code.
-      // We will make a POST to /api/agent/memories with { content, type: 'preference', category: 'scheduling' }
-      await api.post('/logs', {
-        title: `Manual memory: ${customContent}`,
-        duration: 0,
-        notes: `Memory Injection`
-      });
-      
-      // Let's assume we can post to /agent/memories
-      try {
-        await api.post('/agent/memories', {
-          content: customContent,
-          type: 'preference',
-          category: 'scheduling'
-        });
-      } catch (e) {
-        // Fallback if endpoint is not updated yet
-      }
 
       setCustomContent('');
       setAddingCustom(false);
       fetchMemories();
     } catch (err) {
-      console.error(err);
+      console.error('Failed to add custom memory:', err);
     } finally {
       setSubmittingCustom(false);
     }

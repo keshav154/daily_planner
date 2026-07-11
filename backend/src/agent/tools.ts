@@ -2,7 +2,7 @@ import mongoose from 'mongoose';
 import { Task, AgentMemory } from '../models/Schemas';
 import { Goal } from '../models/Goal';
 import Habit from '../models/Habit';
-import { getRelevantMemories } from '../services/similarity';
+import { getRelevantMemories, findSimilarMemory } from '../services/similarity';
 import { ToolSchema } from '../config/nvidia';
 
 export interface ToolContext {
@@ -234,10 +234,34 @@ const CHAT_ONLY_TOOLS: ToolSchema[] = [
         required: ['goalId', 'milestoneIndex']
       }
     }
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'remember_fact',
+      description: 'Save a durable fact, preference, or commitment the user shared, so it is remembered in all future planning and conversations. Use whenever the user mentions something worth remembering long-term: deadlines and events ("my exam is Aug 20"), preferences ("I hate meetings before 11"), constraints ("I commute Tuesdays"), or explicit "remember that..." requests. Do NOT use for one-off chit-chat.',
+      parameters: {
+        type: 'object',
+        properties: {
+          fact: { type: 'string', description: 'The fact to remember, written in third person about the user, self-contained with absolute dates' },
+          type: { type: 'string', enum: ['preference', 'general'], description: 'preference for likes/dislikes/rules, general for facts/events' },
+          category: { type: 'string', description: 'e.g. scheduling, health, work, learning' },
+          importance: { type: 'number', description: '1-10, how strongly this should influence future planning' }
+        },
+        required: ['fact']
+      }
+    }
   }
 ];
 
 export const CHAT_TOOLS: ToolSchema[] = [...AGENT_TOOLS, ...CHAT_ONLY_TOOLS];
+
+/**
+ * Tools that only observe state and change nothing. Their results feed the
+ * model's next reasoning step but must NOT be reported as "actions taken" —
+ * otherwise digests and activity feeds fill up with raw task-list JSON.
+ */
+export const READ_ONLY_TOOLS = new Set(['get_tasks', 'search_memories']);
 
 function summarizeTasks(tasks: any[]): string {
   if (tasks.length === 0) return 'No matching tasks.';
@@ -353,11 +377,32 @@ export async function executeAgentTool(
 
     case 'create_nudge_memory': {
       if (!args.content) return { result: 'Error: content is required.' };
+      const category = (args.category || 'productivity').toLowerCase();
+
+      // The hourly loop re-detects the same condition every cycle (e.g. a
+      // habit streak at risk stays at risk all day). Two guards stop it from
+      // stacking a dozen copies of the same warning:
+      // 1. At most one unexpired autonomous nudge per category.
+      const activeNudge = await AgentMemory.findOne({
+        userId,
+        source: 'autonomous',
+        expiresAt: { $gt: now },
+        category: new RegExp(`^${category}$`, 'i')
+      });
+      if (activeNudge) {
+        return { result: `Skipped: an active "${category}" nudge already exists ("${activeNudge.content.slice(0, 60)}..."). It expires ${activeNudge.expiresAt?.toISOString()}.` };
+      }
+      // 2. Semantic near-duplicate check across all live memories.
+      const similar = await findSimilarMemory(userId, args.content);
+      if (similar) {
+        return { result: `Skipped: a similar memory already exists ("${similar.content.slice(0, 60)}...").` };
+      }
+
       const mem = new AgentMemory({
         userId,
         type: 'adjustment',
         content: args.content,
-        category: args.category || 'productivity',
+        category,
         feedback: 'none',
         source: 'autonomous',
         importance: args.importance || 6,
@@ -445,6 +490,26 @@ export async function executeAgentTool(
       goal.agentNotes.push(`Milestone "${goal.milestones[idx].title}" completed via chat (${now.toLocaleDateString()}).`);
       await goal.save();
       return { result: `Completed milestone "${goal.milestones[idx].title}" for goal "${goal.title}".` };
+    }
+
+    case 'remember_fact': {
+      if (!args.fact) return { result: 'Error: fact is required.' };
+      // Facts stated by the user in chat are first-party input, so they are
+      // stored as source 'user' and auto-accepted — unlike reflection insights,
+      // which require review before influencing planning.
+      const dedupe = await findSimilarMemory(userId, args.fact);
+      if (dedupe) return { result: `Already remembered — a similar memory exists: "${dedupe.content.slice(0, 80)}"` };
+      const factMemory = new AgentMemory({
+        userId,
+        type: args.type === 'preference' ? 'preference' : 'general',
+        content: args.fact,
+        category: args.category || 'general',
+        feedback: 'accepted',
+        source: 'user',
+        importance: Math.min(10, Math.max(1, args.importance || 7))
+      });
+      await factMemory.save();
+      return { result: `Remembered: "${args.fact}"` };
     }
 
     default:

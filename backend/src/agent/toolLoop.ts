@@ -1,6 +1,6 @@
 import Anthropic from '@anthropic-ai/sdk';
 import { queryNvidiaNimChat, ChatMessage, ToolSchema } from '../config/nvidia';
-import { AGENT_TOOLS, executeAgentTool, ToolContext, ToolExecutionResult } from './tools';
+import { AGENT_TOOLS, READ_ONLY_TOOLS, executeAgentTool, ToolContext, ToolExecutionResult } from './tools';
 
 export interface ToolLoopResult {
   rationale: string;
@@ -83,7 +83,11 @@ export async function runNimToolLoop(
       }
 
       if (execResult.suggestion) suggestions.push(execResult.suggestion);
-      if (!execResult.result.startsWith('Error')) executedLogs.push(execResult.result);
+      // Read-only tools (get_tasks, search_memories) inform the model but are
+      // not user-visible "actions taken".
+      if (!execResult.result.startsWith('Error') && !READ_ONLY_TOOLS.has(call.function.name)) {
+        executedLogs.push(execResult.result);
+      }
 
       messages.push({ role: 'tool', tool_call_id: call.id, name: call.function.name, content: execResult.result });
 
@@ -99,8 +103,8 @@ export async function runNimToolLoop(
   return { rationale, executedLogs, suggestions };
 }
 
-function toAnthropicTools(): Anthropic.Tool[] {
-  return AGENT_TOOLS.map(t => ({
+function toAnthropicTools(tools: ToolSchema[]): Anthropic.Tool[] {
+  return tools.map(t => ({
     name: t.function.name,
     description: t.function.description,
     input_schema: t.function.parameters as any
@@ -115,10 +119,14 @@ export async function runAnthropicToolLoop(
   client: Anthropic,
   systemPrompt: string,
   userPrompt: string,
-  ctx: ToolContext
+  ctx: ToolContext,
+  options: ToolLoopOptions = {}
 ): Promise<ToolLoopResult> {
-  const tools = toAnthropicTools();
-  const messages: Anthropic.MessageParam[] = [{ role: 'user', content: userPrompt }];
+  const tools = toAnthropicTools(options.tools || AGENT_TOOLS);
+  const messages: Anthropic.MessageParam[] = [
+    ...(options.history || []).map((h): Anthropic.MessageParam => ({ role: h.role, content: h.content })),
+    { role: 'user', content: userPrompt }
+  ];
 
   const executedLogs: string[] = [];
   const suggestions: ToolLoopResult['suggestions'] = [];
@@ -154,7 +162,11 @@ export async function runAnthropicToolLoop(
         }
 
         if (execResult.suggestion) suggestions.push(execResult.suggestion);
-        if (!execResult.result.startsWith('Error')) executedLogs.push(execResult.result);
+        // Read-only tools (get_tasks, search_memories) inform the model but are
+        // not user-visible "actions taken".
+        if (!execResult.result.startsWith('Error') && !READ_ONLY_TOOLS.has(block.name)) {
+          executedLogs.push(execResult.result);
+        }
 
         toolResults.push({ type: 'tool_result', tool_use_id: block.id, content: execResult.result });
       }

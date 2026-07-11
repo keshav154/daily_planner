@@ -2,7 +2,7 @@ import Anthropic from '@anthropic-ai/sdk';
 import mongoose from 'mongoose';
 import { User, Task, Log, AgentMemory, AgentRun, ITask, ILog, IAgentMemory } from '../models/Schemas';
 import { queryNvidiaNim } from '../config/nvidia';
-import { getRelevantMemories, getPatternMemories } from '../services/similarity';
+import { getRelevantMemories, getPatternMemories, getUserRules, findSimilarMemory } from '../services/similarity';
 
 // Instantiate Anthropic Client
 const getAnthropicClient = (): Anthropic | null => {
@@ -112,11 +112,19 @@ export const gatherUserContext = async (userId: string, targetDateStr?: string) 
   const tasksQuery = activeTasks.map(t => t.title).join(' ');
   const relevantMemories = await getRelevantMemories(userId, tasksQuery, 10);
   const patternMemories = await getPatternMemories(userId, 5);
+  // User-authored rules and facts are direct instructions — always included,
+  // never subject to topical-similarity filtering.
+  const userRules = await getUserRules(userId, 10);
   const memoryKey = (m: any) => (m._id ? m._id.toString() : m.content);
   const seenMemoryIds = new Set(relevantMemories.map(memoryKey));
   const memories = [
     ...relevantMemories,
-    ...patternMemories.filter((m: any) => !seenMemoryIds.has(memoryKey(m)))
+    ...[...patternMemories, ...userRules].filter((m: any) => {
+      const key = memoryKey(m);
+      if (seenMemoryIds.has(key)) return false;
+      seenMemoryIds.add(key);
+      return true;
+    })
   ];
 
   // Fetch past completion stats (last 7 days completed tasks vs all tasks)
@@ -492,9 +500,17 @@ Return ONLY a JSON object matching this schema, no other text:
 
     const reflection: ReflectionResult = parseAiJson<ReflectionResult>(responseText);
 
-    // Save reflection insights into AgentMemory
+    // Save reflection insights into AgentMemory — skipping near-duplicates of
+    // insights that already exist. The prompt asks the model not to repeat
+    // itself, but models re-derive the same patterns from the same data, so
+    // this is enforced in code rather than trusted to the prompt.
     const savedMemories: IAgentMemory[] = [];
     for (const insight of reflection.insights) {
+      const duplicate = await findSimilarMemory(userId, insight.content);
+      if (duplicate) {
+        console.log(`[Reflection] Skipped near-duplicate insight: "${insight.content.slice(0, 60)}..."`);
+        continue;
+      }
       const memory = new AgentMemory({
         userId,
         type: insight.type,
@@ -558,6 +574,8 @@ const runMockReflection = async (userId: string, context: any) => {
 
   const savedMemories: IAgentMemory[] = [];
   for (const insight of insightsToSave) {
+    const duplicate = await findSimilarMemory(userId, insight.content);
+    if (duplicate) continue;
     const memory = new AgentMemory({
       userId,
       type: insight.type,

@@ -1,9 +1,10 @@
 import { User, Task, Log, AgentMemory, AgentRun, ITask, ILog, IAgentMemory } from '../models/Schemas';
 import { Goal } from '../models/Goal';
 import Habit from '../models/Habit';
-import { getRelevantMemories, getPatternMemories } from './similarity';
+import { getRelevantMemories, getPatternMemories, getUserRules } from './similarity';
 import { searchSreResources } from './webSearch';
 import { runNimToolLoop, runAnthropicToolLoop, ToolLoopResult } from '../agent/toolLoop';
+import { executeAgentTool } from '../agent/tools';
 import Anthropic from '@anthropic-ai/sdk';
 import mongoose from 'mongoose';
 
@@ -104,11 +105,19 @@ ${searchResult.content}`;
     const tasksQuery = activeTasks.map(t => t.title).join(' ');
     const relevantMemories = await getRelevantMemories(userId, tasksQuery, 10);
     const patternMemories = await getPatternMemories(userId, 5);
+    // User-authored rules and facts are direct instructions — always included,
+    // never subject to topical-similarity filtering.
+    const userRules = await getUserRules(userId, 10);
     const memoryKey = (m: any) => (m._id ? m._id.toString() : m.content);
     const seenMemoryIds = new Set(relevantMemories.map(memoryKey));
     const memories = [
       ...relevantMemories,
-      ...patternMemories.filter((m: any) => !seenMemoryIds.has(memoryKey(m)))
+      ...[...patternMemories, ...userRules].filter((m: any) => {
+        const key = memoryKey(m);
+        if (seenMemoryIds.has(key)) return false;
+        seenMemoryIds.add(key);
+        return true;
+      })
     ];
 
     const adjustedPreferences = { 
@@ -227,41 +236,25 @@ Review goal timelines, habit streaks, task load, and overdue tasks as described 
   }
 };
 
-// Executes the directActions produced by the deterministic mock planner (used when no LLM is active)
+// Executes the directActions produced by the deterministic mock planner (used
+// when no LLM is active). Delegates to the shared tool executor so the offline
+// path gets the exact same behavior and dedupe guards as the tool-calling loop
+// — the mock path previously had its own copy of the nudge logic, which is how
+// hourly runs stacked a dozen identical "habit at risk" memories in one day.
 async function executeMockDirectActions(userId: string, now: Date, directActions: any[]): Promise<string[]> {
   const executedLogs: string[] = [];
+  const toolNameByAction: Record<string, string> = {
+    add_agent_note: 'add_goal_note',
+    create_nudge_memory: 'create_nudge_memory'
+  };
+
   for (const dAct of directActions || []) {
+    const toolName = toolNameByAction[dAct.actionType];
+    if (!toolName) continue;
     try {
-      switch (dAct.actionType) {
-        case 'add_agent_note': {
-          const { goalId, note } = dAct.details;
-          if (goalId && note) {
-            await Goal.updateOne(
-              { _id: new mongoose.Types.ObjectId(goalId), userId },
-              { $push: { agentNotes: `[Autonomous Brain] ${note} (${now.toLocaleDateString()})` } }
-            );
-            executedLogs.push(`Added notes to goal ${goalId}: "${note}"`);
-          }
-          break;
-        }
-        case 'create_nudge_memory': {
-          const { content, category, importance } = dAct.details;
-          if (content) {
-            const newMem = new AgentMemory({
-              userId,
-              type: 'adjustment',
-              content,
-              category: category || 'productivity',
-              feedback: 'none', // pending user dismissal
-              source: 'autonomous',
-              importance: importance || 6,
-              expiresAt: new Date(now.getTime() + 24 * 60 * 60 * 1000) // expires in 24 hours
-            });
-            await newMem.save();
-            executedLogs.push(`Created temporary agent nudge memory: "${content}"`);
-          }
-          break;
-        }
+      const execResult = await executeAgentTool(toolName, dAct.details || {}, { userId, now });
+      if (!execResult.result.startsWith('Error') && !execResult.result.startsWith('Skipped')) {
+        executedLogs.push(execResult.result);
       }
     } catch (e: any) {
       console.error(`[Autonomous Loop] Failed to run direct action ${dAct.actionType}:`, e.message);

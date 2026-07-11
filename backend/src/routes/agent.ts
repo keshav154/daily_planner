@@ -6,6 +6,8 @@ import { Goal } from '../models/Goal';
 import { authenticateToken, AuthRequest } from '../middleware/auth';
 import { runPlanningLoop, runReflectionLoop, gatherUserContext } from '../agent/loop';
 import { queryNvidiaNim } from '../config/nvidia';
+import { CHAT_TOOLS } from '../agent/tools';
+import { runNimToolLoop, runAnthropicToolLoop, ToolLoopResult } from '../agent/toolLoop';
 import Anthropic from '@anthropic-ai/sdk';
 
 const router = Router();
@@ -210,10 +212,17 @@ router.post('/reflect', authenticateToken, async (req: AuthRequest, res: Respons
   }
 });
 
-// Get user memories / insights
+// Get user memories / insights (excluding expired transient nudges, which are
+// only meaningful while live and clutter the review queue afterwards)
 router.get('/memories', authenticateToken, async (req: AuthRequest, res: Response) => {
   try {
-    const memories = await AgentMemory.find({ userId: req.userId }).sort({ createdAt: -1 });
+    const memories = await AgentMemory.find({
+      userId: req.userId,
+      $or: [
+        { expiresAt: { $exists: false } },
+        { expiresAt: { $gt: new Date() } }
+      ]
+    }).sort({ createdAt: -1 });
     res.json(memories);
   } catch (error: any) {
     console.error('Fetch memories error:', error);
@@ -235,7 +244,9 @@ router.post('/memories', authenticateToken, async (req: AuthRequest, res: Respon
       content,
       type: type || 'preference',
       category: category || 'general',
-      feedback: 'accepted' // Auto-approve manual entries
+      feedback: 'accepted', // Auto-approve manual entries
+      source: 'user',       // User-authored: injected into every agent context by getUserRules
+      importance: 8
     });
 
     await memory.save();
@@ -300,178 +311,45 @@ Current Context Snapshot:
 - Active Goals: ${JSON.stringify(activeGoals.map(g => ({ id: g._id, title: g.title, progress: g.progress, deadline: g.deadline, milestones: g.milestones.map(m => ({ title: m.title, completed: m.completed })) })), null, 2)}
 - Habits: ${JSON.stringify(activeHabits.map(h => ({ id: h._id, title: h.title, streak: h.currentStreak })), null, 2)}
 
-You can respond with standard suggestions AND also trigger direct tool calls if the user explicitly asks you to create, delete, timeblock, or schedule something.
-Allowed action types in suggestions:
-- "reorder": { orderedTaskIds: string[] }
-- "suggest_time_block": { taskId: string, startTime: string, duration: number }
-- "break_down": { taskId: string, subtasks: string[] }
-- "nudge": { taskId: string, message: string }
-- "create_task": { title: string, estimatedTime: number }
+Use the available tools to take action whenever the user asks you to create, delete, reschedule, break down, or organize something — don't just describe what you would do, actually call the tool. Reordering the whole day's task list is disruptive, so use propose_reorder for that instead of applying it directly; everything else (create_task, delete_task, schedule_time_block, break_down_task, defer_task, add_habit, create_goal, complete_milestone, add_goal_note) is safe to execute immediately. Not every message needs a tool call — plain questions just get a plain answer.
 
-Direct Tool Calls allowed in your output:
-{
-  "name": "create_task" | "delete_task" | "add_time_block" | "add_habit" | "create_goal" | "complete_milestone",
-  "arguments": {
-    // for create_task: { "title": string, "estimatedTime": number }
-    // for delete_task: { "taskId": string }
-    // for add_time_block: { "taskId": string, "startTime": string, "endTime": string }
-    // for add_habit: { "title": string, "frequency": "daily" | "weekdays" | "custom", "icon": string }
-    // for create_goal: { "title": string, "description": string, "deadline": string }
-    // for complete_milestone: { "goalId": string, "milestoneIndex": number }
-  }
-}
-
-Response JSON interface:
-{
-  "response": "Your friendly text reply analyzing their message and context...",
-  "suggestions": [],
-  "toolCall": null // or the tool call object
-}
-
-Format output as raw JSON only. Do not wrap in markdown \`\`\`json block.`;
+You are also the user's second brain — you remember what they tell you:
+- When the user mentions a durable fact, deadline, preference, constraint, or says "remember...", call remember_fact to store it (convert relative dates like "next Friday" to absolute dates using the current time above). If the fact also implies work to do, create the task AND remember the fact.
+- Before answering questions about the user's own life, habits, or past ("when is my exam?", "what did I say about..."), call search_memories first instead of guessing — the context snapshot above only shows a small sample of memories.
+After any tool calls, reply with a short, friendly summary of what you did (or your answer, if no action was needed).`;
 
     const nvidiaKey = process.env.NVIDIA_API_KEY;
-    const isNvidiaActive = nvidiaKey && nvidiaKey !== 'your_nvidia_api_key_here';
+    const isNvidiaActive = !!(nvidiaKey && nvidiaKey !== 'your_nvidia_api_key_here');
     const anthropicApiKey = process.env.ANTHROPIC_API_KEY;
+    const isAnthropicActive = !!(anthropicApiKey && anthropicApiKey !== 'your_anthropic_api_key_here');
 
-    let responseText = '';
-    const messages = [
-      { role: 'system' as const, content: systemPrompt },
-      ...(history || []).map((h: any) => ({ role: h.role, content: h.content })),
-      { role: 'user' as const, content: message }
-    ];
+    const toolCtx = { userId, now: new Date() };
+    const chatHistory = (history || []).map((h: any) => ({ role: h.role, content: h.content }));
+
+    let loopResult: ToolLoopResult | null = null;
 
     if (isNvidiaActive) {
       try {
-        responseText = await queryNvidiaNim(messages, process.env.NVIDIA_MODEL || 'meta/llama-3.3-70b-instruct', 0.5, 1000);
+        loopResult = await runNimToolLoop(systemPrompt, message, toolCtx, { tools: CHAT_TOOLS, history: chatHistory });
       } catch (nvidiaErr) {
-        console.warn('NVIDIA NIM chat generation failed, attempting Anthropic fallback:', nvidiaErr);
-        if (anthropicApiKey && anthropicApiKey !== 'your_anthropic_api_key_here') {
-          const claudeMessages = messages.filter(m => m.role !== 'system');
-          const anthropic = new Anthropic({ apiKey: anthropicApiKey });
-          const response = await anthropic.messages.create({
-            model: 'claude-sonnet-5',
-            max_tokens: 1000,
-            system: systemPrompt,
-            messages: claudeMessages
-          });
-          responseText = response.content[0].type === 'text' ? response.content[0].text : '';
-        } else {
-          throw nvidiaErr;
-        }
+        console.warn('[Chat] NIM tool loop failed, attempting Anthropic fallback:', nvidiaErr);
       }
-    } else if (anthropicApiKey && anthropicApiKey !== 'your_anthropic_api_key_here') {
-      const claudeMessages = messages.filter(m => m.role !== 'system');
-      const anthropic = new Anthropic({ apiKey: anthropicApiKey });
-      const response = await anthropic.messages.create({
-        model: 'claude-sonnet-5',
-        max_tokens: 1000,
-        system: systemPrompt,
-        messages: claudeMessages
-      });
-      responseText = response.content[0].type === 'text' ? response.content[0].text : '';
-    } else {
-      responseText = JSON.stringify({
-        response: `Offline Mode: I received your message "${message}". Add an API key (Claude or NVIDIA NIM) to enable interactive chat scheduling.`,
-        suggestions: []
-      });
     }
 
-    const parsedResponse = parseAiJson<any>(responseText);
-    const suggestions = parsedResponse.suggestions || [];
-    let toolCallResult = null;
-
-    // Execute direct tool call if present
-    if (parsedResponse.toolCall && parsedResponse.toolCall.name) {
-      const { name, arguments: args } = parsedResponse.toolCall;
+    if (!loopResult && isAnthropicActive) {
       try {
-        switch (name) {
-          case 'create_task': {
-            const lastTask = await Task.findOne({ userId }).sort({ order: -1 });
-            const nextOrder = lastTask ? lastTask.order + 1 : 0;
-            const newTask = new Task({
-              userId,
-              title: args.title,
-              estimatedTime: args.estimatedTime || 30,
-              dueDate: new Date(),
-              priority: 'medium',
-              source: 'agent-suggested',
-              order: nextOrder
-            });
-            await newTask.save();
-            toolCallResult = `Successfully executed tool create_task: "${args.title}"`;
-            break;
-          }
-          case 'delete_task': {
-            await Task.deleteOne({ _id: args.taskId, userId });
-            toolCallResult = `Successfully executed tool delete_task.`;
-            break;
-          }
-          case 'add_time_block': {
-            await Task.updateOne(
-              { _id: args.taskId, userId },
-              { $set: { timeBlock: { startTime: args.startTime, endTime: args.endTime } } }
-            );
-            toolCallResult = `Successfully scheduled focus block from ${args.startTime} to ${args.endTime}`;
-            break;
-          }
-          case 'add_habit': {
-            const newHabit = new Habit({
-              userId,
-              title: args.title,
-              frequency: args.frequency || 'daily',
-              icon: args.icon || '✨',
-              completions: [],
-              currentStreak: 0,
-              longestStreak: 0,
-              isActive: true
-            });
-            await newHabit.save();
-            toolCallResult = `Successfully added habit: ${args.title}`;
-            break;
-          }
-          case 'create_goal': {
-            const newGoal = new Goal({
-              userId,
-              title: args.title,
-              description: args.description || '',
-              deadline: args.deadline ? new Date(args.deadline) : undefined,
-              milestones: [
-                { title: 'Define scope and roadmap', completed: false },
-                { title: 'Implement key logic steps', completed: false },
-                { title: 'Validate and review milestones', completed: false }
-              ],
-              status: 'active',
-              agentNotes: ['Goal created autonomously via conversational AI interface.']
-            });
-            await newGoal.save();
-            toolCallResult = `Successfully created goal: ${args.title}`;
-            break;
-          }
-          case 'complete_milestone': {
-            const goal = await Goal.findOne({ _id: args.goalId, userId });
-            if (goal) {
-              const idx = parseInt(args.milestoneIndex, 10);
-              if (!isNaN(idx) && idx >= 0 && idx < goal.milestones.length) {
-                goal.milestones[idx].completed = true;
-                goal.milestones[idx].completedAt = new Date();
-                goal.agentNotes.push(`Milestone index ${idx} completed autonomously via chat tool execution.`);
-                await goal.save();
-                toolCallResult = `Successfully completed milestone "${goal.milestones[idx].title}" for goal "${goal.title}"`;
-              } else {
-                toolCallResult = `Milestone index out of bounds.`;
-              }
-            } else {
-              toolCallResult = `Goal not found.`;
-            }
-            break;
-          }
-        }
-      } catch (e: any) {
-        console.error('Failed to run tool call:', e);
-        toolCallResult = `Tool call execution failed: ${e.message}`;
+        const anthropic = new Anthropic({ apiKey: anthropicApiKey });
+        loopResult = await runAnthropicToolLoop(anthropic, systemPrompt, message, toolCtx, { tools: CHAT_TOOLS, history: chatHistory });
+      } catch (anthropicErr) {
+        console.error('[Chat] Anthropic tool loop failed:', anthropicErr);
       }
     }
+
+    const responseText = loopResult
+      ? loopResult.rationale
+      : `Offline Mode: I received your message "${message}". Add an API key (Claude or NVIDIA NIM) to enable interactive chat scheduling.`;
+    const executedActions = loopResult?.executedLogs || [];
+    const suggestions = loopResult?.suggestions || [];
 
     let runId = null;
     const chatContextSnapshot = {
@@ -489,6 +367,7 @@ Format output as raw JSON only. Do not wrap in markdown \`\`\`json block.`;
           rationale: `Chat: ${message}`,
           suggestions
         },
+        executedActions,
         actionsTaken: suggestions.map((s: any) => ({
           suggestionId: s.id,
           actionType: s.actionType,
@@ -500,9 +379,9 @@ Format output as raw JSON only. Do not wrap in markdown \`\`\`json block.`;
     }
 
     res.json({
-      response: parsedResponse.response,
+      response: responseText,
+      executedActions,
       suggestions,
-      toolCall: parsedResponse.toolCall ? { ...parsedResponse.toolCall, result: toolCallResult } : null,
       runId
     });
   } catch (error: any) {

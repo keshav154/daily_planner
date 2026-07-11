@@ -119,7 +119,18 @@ export const consolidateMemories = async (userId: string) => {
   console.log(`[Memory Consolidation] Running consolidation for user ${userId}...`);
   try {
     const now = new Date();
-    
+
+    // 0. PURGE EXPIRED TRANSIENTS
+    // Nudges carry an expiresAt and are only meaningful for a day — once
+    // expired they are noise in the review queue and in retrieval scans.
+    const purgeResult = await AgentMemory.deleteMany({
+      userId,
+      expiresAt: { $lte: now }
+    });
+    if (purgeResult.deletedCount > 0) {
+      console.log(`[Memory Consolidation] Purged ${purgeResult.deletedCount} expired transient memories.`);
+    }
+
     // 1. IMPORTANCE DECAY
     // Reduce importance of memories not accessed/updated in 14 days
     const fourteenDaysAgo = new Date(now.getTime() - 14 * 24 * 60 * 60 * 1000);
@@ -206,9 +217,12 @@ export const consolidateMemories = async (userId: string) => {
     }
 
     // 3. AI DUP CONSOLIDATION & PATTERN SYNTHESIS
-    // Only run if we have 3 or more memories
-    if (activeMemories.length >= 3) {
-      const consolidated = await askLLMForConsolidation(activeMemories);
+    // Transient nudges (anything with expiresAt) are excluded: merging a
+    // "habit at risk tonight" warning into a permanent accepted memory turns
+    // a momentary state into a forever-fact. Only durable memories qualify.
+    const durableMemories = activeMemories.filter(m => !m.expiresAt);
+    if (durableMemories.length >= 3) {
+      const consolidated = await askLLMForConsolidation(durableMemories);
       if (consolidated && consolidated.length > 0) {
         for (const item of consolidated) {
           // Check if it consolidated any items

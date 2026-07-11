@@ -1,7 +1,7 @@
 import React, { useState, useRef, useEffect } from 'react';
 import api from '../services/api';
-import { 
-  Sparkles, X, Send, Loader2, Check, CornerDownRight 
+import {
+  Sparkles, X, Send, Loader2, Check, CornerDownRight, Zap
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 
@@ -16,6 +16,9 @@ interface Suggestion {
 interface ChatMessage {
   role: 'user' | 'assistant';
   content: string;
+  // Tool calls the assistant already executed for this reply (create_task,
+  // delete_task, etc.) — already applied, shown for transparency.
+  executedActions?: string[];
   suggestions?: Suggestion[];
   runId?: string;
   appliedSuggestions?: string[]; // IDs of suggestions applied in this message
@@ -71,6 +74,7 @@ export const AgentChatPanel: React.FC<AgentChatPanelProps> = ({
       setMessages(prev => [...prev, {
         role: 'assistant',
         content: res.data.response,
+        executedActions: res.data.executedActions,
         suggestions: res.data.suggestions,
         runId: res.data.runId,
         appliedSuggestions: []
@@ -180,12 +184,27 @@ export const AgentChatPanel: React.FC<AgentChatPanelProps> = ({
                   }`}
                 >
                   <div className={`p-3.5 rounded-2xl text-xs leading-relaxed ${
-                    isAssistant 
-                      ? 'bg-neutral-800 text-neutral-200 rounded-tl-xs border border-white/5' 
+                    isAssistant
+                      ? 'bg-neutral-800 text-neutral-200 rounded-tl-xs border border-white/5'
                       : 'bg-indigo-600 text-white rounded-tr-xs shadow-lg'
                   }`}>
                     {msg.content}
                   </div>
+
+                  {/* Actions the assistant already took this turn */}
+                  {isAssistant && msg.executedActions && msg.executedActions.length > 0 && (
+                    <div className="w-full mt-2 space-y-1">
+                      {msg.executedActions.map((action, idx) => (
+                        <div
+                          key={idx}
+                          className="flex items-start gap-1.5 text-[10px] font-semibold text-emerald-400 bg-emerald-950/20 border border-emerald-500/20 rounded-lg px-2.5 py-1.5"
+                        >
+                          <Zap className="w-3 h-3 mt-0.5 shrink-0" />
+                          <span>{action}</span>
+                        </div>
+                      ))}
+                    </div>
+                  )}
 
                   {/* Recommendations renderer inside chat bubbles */}
                   {isAssistant && msg.suggestions && msg.suggestions.length > 0 && msg.runId && (

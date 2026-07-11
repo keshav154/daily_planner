@@ -1,5 +1,5 @@
 import { Router, Request, Response } from 'express';
-import { Task, User } from '../models/Schemas';
+import { Task, User, AgentRun, AgentMemory } from '../models/Schemas';
 import RecurringEvent from '../models/RecurringEvent';
 import { queryNvidiaNim } from '../config/nvidia';
 import Anthropic from '@anthropic-ai/sdk';
@@ -63,6 +63,32 @@ router.get('/daily', async (req: Request, res: Response) => {
     const activeTasks = tasks.filter(t => t.status !== 'done' && t.status !== 'skipped');
     const highPriorityTasks = activeTasks.filter(t => t.priority === 'high');
 
+    // "While you were away" digest: what the autonomous agent did in the last
+    // 24h and what's still waiting on the user. This is how the second brain
+    // reports back instead of working invisibly.
+    const twentyFourHoursAgo = new Date(Date.now() - 24 * 60 * 60 * 1000);
+    const recentRuns = await AgentRun.find({ userId, createdAt: { $gte: twentyFourHoursAgo } })
+      .sort({ createdAt: -1 })
+      .limit(30);
+
+    const agentActions = recentRuns
+      .flatMap(r => r.executedActions || [])
+      // Older runs logged raw read-tool output (JSON dumps) into
+      // executedActions before those were excluded — filter them out so the
+      // digest only shows human-readable action sentences.
+      .filter(a => a && !a.startsWith('[') && !a.startsWith('{') && a !== 'No matching tasks.')
+      .slice(0, 8);
+    const pendingSuggestionsCount = recentRuns.reduce(
+      (acc, r) => acc + r.actionsTaken.filter(a => a.status === 'pending').length,
+      0
+    );
+    const newInsightsCount = await AgentMemory.countDocuments({
+      userId,
+      createdAt: { $gte: twentyFourHoursAgo },
+      feedback: 'none',
+      source: { $in: ['reflection', 'autonomous', 'consolidation'] }
+    });
+
     const nvidiaKey = process.env.NVIDIA_API_KEY;
     const isNvidiaActive = nvidiaKey && nvidiaKey !== 'your_nvidia_api_key_here';
     const anthropicClient = getAnthropicClient();
@@ -78,8 +104,10 @@ Summary statistics:
 - Recurring meetings/standups scheduled today: ${todayRecurring.map(e => `${e.title} (${e.startTime}-${e.endTime})`).join(', ') || 'None'}
 - User Timezone: ${user.timezone || 'UTC'}
 - Work hours preferences: ${user.preferences?.workingHoursStart || '09:00'} to ${user.preferences?.workingHoursEnd || '17:00'}
+- Actions the AI agent already took in the last 24h: ${agentActions.join('; ') || 'None'}
+- Agent suggestions awaiting the user's review: ${pendingSuggestionsCount}
 
-Keep the tone encouraging, high-agency, professional, and productivity-focused. Return ONLY the plain text briefing paragraph. Do not include markdown headers or greetings.`;
+Keep the tone encouraging, high-agency, professional, and productivity-focused. If the agent took actions overnight, mention it briefly so the user knows their second brain has been working. Return ONLY the plain text briefing paragraph. Do not include markdown headers or greetings.`;
 
       try {
         if (isNvidiaActive) {
@@ -122,7 +150,14 @@ Keep the tone encouraging, high-agency, professional, and productivity-focused. 
       }. You also have ${meetingCount} recurring meetings scheduled. Make sure to block out some solid deep work time in your calendar and keep your focus streak going!`;
     }
 
-    return res.json({ briefing: briefingText.trim() });
+    return res.json({
+      briefing: briefingText.trim(),
+      digest: {
+        agentActions,
+        pendingSuggestionsCount,
+        newInsightsCount
+      }
+    });
   } catch (error: any) {
     return res.status(500).json({ error: error.message });
   }

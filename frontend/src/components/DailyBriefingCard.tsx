@@ -1,16 +1,23 @@
 import React, { useState, useEffect } from 'react';
 import api from '../services/api';
-import { Sparkles, X } from 'lucide-react';
+import { Sparkles, X, Zap } from 'lucide-react';
+
+interface BriefingDigest {
+  agentActions: string[];
+  pendingSuggestionsCount: number;
+  newInsightsCount: number;
+}
 
 export const DailyBriefingCard: React.FC = () => {
   const [briefing, setBriefing] = useState('');
+  const [digest, setDigest] = useState<BriefingDigest | null>(null);
   const [loading, setLoading] = useState(true);
   const [dismissed, setDismissed] = useState(false);
 
   useEffect(() => {
     const todayStr = new Date().toISOString().split('T')[0];
     const isDismissed = localStorage.getItem('kortex-briefing-dismissed-date') === todayStr;
-    
+
     if (isDismissed) {
       setDismissed(true);
       setLoading(false);
@@ -21,6 +28,7 @@ export const DailyBriefingCard: React.FC = () => {
       try {
         const res = await api.get('/briefing/daily');
         setBriefing(res.data.briefing || '');
+        setDigest(res.data.digest || null);
       } catch (err) {
         console.error('Failed to fetch daily briefing:', err);
       } finally {
@@ -59,7 +67,30 @@ export const DailyBriefingCard: React.FC = () => {
               <div className="h-3.5 bg-[#C4B5FD]/20 dark:bg-neutral-900 rounded-none animate-pulse w-3/4"></div>
             </div>
           ) : (
-            <p className="text-[11px] text-black dark:text-neutral-300 leading-relaxed font-sans font-bold">{briefing}</p>
+            <>
+              <p className="text-[11px] text-black dark:text-neutral-300 leading-relaxed font-sans font-bold">{briefing}</p>
+
+              {digest && (digest.agentActions.length > 0 || digest.pendingSuggestionsCount > 0 || digest.newInsightsCount > 0) && (
+                <div className="pt-2 space-y-1.5">
+                  <p className="text-[9px] font-black uppercase tracking-wider text-emerald-600 dark:text-emerald-400">
+                    While you were away
+                  </p>
+                  {digest.agentActions.map((action, idx) => (
+                    <div key={idx} className="flex items-start gap-1.5 text-[10px] font-bold text-black dark:text-neutral-300">
+                      <Zap className="w-3 h-3 mt-0.5 shrink-0 text-emerald-500 dark:text-emerald-400" />
+                      <span>{action}</span>
+                    </div>
+                  ))}
+                  {(digest.pendingSuggestionsCount > 0 || digest.newInsightsCount > 0) && (
+                    <p className="text-[10px] font-bold text-neutral-600 dark:text-neutral-400">
+                      {digest.pendingSuggestionsCount > 0 && `${digest.pendingSuggestionsCount} suggestion${digest.pendingSuggestionsCount > 1 ? 's' : ''} awaiting your review`}
+                      {digest.pendingSuggestionsCount > 0 && digest.newInsightsCount > 0 && ' · '}
+                      {digest.newInsightsCount > 0 && `${digest.newInsightsCount} new insight${digest.newInsightsCount > 1 ? 's' : ''} in Agent Memory`}
+                    </p>
+                  )}
+                </div>
+              )}
+            </>
           )}
         </div>
 

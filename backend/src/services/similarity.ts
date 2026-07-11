@@ -189,6 +189,79 @@ export const getPatternMemories = async (userId: string, limit: number = 5): Pro
   }
 };
 
+/**
+ * Checks whether a candidate memory is a near-duplicate of one that already
+ * exists, BEFORE writing it. This is the write-time guard that stops nightly
+ * reflections and hourly nudges from re-inserting the same insight over and
+ * over. Uses embedding cosine similarity when available; falls back to
+ * token overlap when embeddings are missing (no NIM key, older memories).
+ */
+export const findSimilarMemory = async (
+  userId: string,
+  content: string,
+  options: { embeddingThreshold?: number; tokenThreshold?: number } = {}
+): Promise<any | null> => {
+  const embeddingThreshold = options.embeddingThreshold ?? 0.86;
+  const tokenThreshold = options.tokenThreshold ?? 0.5;
+
+  try {
+    const now = new Date();
+    const memories = await AgentMemory.find({
+      userId,
+      feedback: { $ne: 'rejected' },
+      $or: [
+        { expiresAt: { $exists: false } },
+        { expiresAt: { $gt: now } }
+      ]
+    });
+    if (memories.length === 0) return null;
+
+    const candidateEmbedding = await embedText(content, 'query');
+    const candidateTokens = content.toLowerCase().split(/\W+/).filter(t => t.length > 2);
+
+    for (const memory of memories) {
+      const memEmbedding = (memory as any).embedding as number[] | undefined;
+      if (candidateEmbedding && memEmbedding && memEmbedding.length > 0) {
+        if (cosineSimilarity(candidateEmbedding, memEmbedding) >= embeddingThreshold) return memory;
+      } else if (candidateTokens.length > 0) {
+        if (tokenOverlapScore(candidateTokens, memory) >= tokenThreshold) return memory;
+      }
+    }
+    return null;
+  } catch (err) {
+    console.error('Failed to check for similar memory:', err);
+    // On failure, err on the side of allowing the write rather than dropping data
+    return null;
+  }
+};
+
+/**
+ * Fetches memories the user explicitly authored (manual rules from the
+ * dashboard, facts saved via chat's remember_fact). These are direct
+ * instructions, so they are injected into every agent context unconditionally
+ * — an explicit "never schedule deep work after 9pm" must reach the agent
+ * even when no task title is topically similar to it.
+ */
+export const getUserRules = async (userId: string, limit: number = 10): Promise<any[]> => {
+  try {
+    const now = new Date();
+    return await AgentMemory.find({
+      userId,
+      source: 'user',
+      feedback: 'accepted',
+      $or: [
+        { expiresAt: { $exists: false } },
+        { expiresAt: { $gt: now } }
+      ]
+    })
+      .sort({ importance: -1, updatedAt: -1 })
+      .limit(limit);
+  } catch (err) {
+    console.error('Failed to fetch user rules:', err);
+    return [];
+  }
+};
+
 // Helper function to update access details
 async function updateAccessStats(memories: any[]) {
   try {
