@@ -1,0 +1,247 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1" />
+<meta name="apple-mobile-web-app-capable" content="yes" />
+<meta name="apple-mobile-web-app-status-bar-style" content="black" />
+<meta name="apple-mobile-web-app-title" content="Kortex Capture" />
+<title>Kortex Quick Capture</title>
+<link rel="icon" href="/favicon.svg" />
+<style>
+  :root { color-scheme: dark; }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 20px;
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    background: #0a0a0f;
+    color: #e5e5e5;
+  }
+  .card {
+    width: 100%;
+    max-width: 420px;
+    background: #16161f;
+    border: 1px solid rgba(255,255,255,0.08);
+    border-radius: 16px;
+    padding: 24px;
+  }
+  h1 {
+    font-size: 15px;
+    font-weight: 800;
+    margin: 0 0 4px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  p.sub { font-size: 12px; color: #888; margin: 0 0 20px; }
+  textarea {
+    width: 100%;
+    min-height: 110px;
+    padding: 12px;
+    border-radius: 10px;
+    border: 1px solid rgba(255,255,255,0.08);
+    background: #0e0e15;
+    color: #f0f0f0;
+    font-size: 15px;
+    font-family: inherit;
+    resize: vertical;
+  }
+  textarea:focus { outline: none; border-color: #6366f1; }
+  .buttons { display: flex; gap: 10px; margin-top: 12px; }
+  button {
+    flex: 1;
+    padding: 13px 10px;
+    border-radius: 10px;
+    border: none;
+    font-size: 13px;
+    font-weight: 700;
+    cursor: pointer;
+    transition: opacity 0.15s;
+  }
+  button:active { opacity: 0.7; }
+  button:disabled { opacity: 0.4; cursor: default; }
+  #remember-btn { background: #6366f1; color: white; }
+  #task-btn { background: #27272f; color: #e5e5e5; border: 1px solid rgba(255,255,255,0.08); }
+  #status {
+    margin-top: 14px;
+    font-size: 12px;
+    font-weight: 600;
+    min-height: 16px;
+  }
+  #status.ok { color: #34d399; }
+  #status.err { color: #f87171; }
+  .key-row {
+    margin-top: 18px;
+    padding-top: 14px;
+    border-top: 1px solid rgba(255,255,255,0.06);
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    font-size: 10px;
+    color: #666;
+  }
+  .key-row button {
+    flex: none;
+    background: none;
+    border: none;
+    color: #6366f1;
+    font-size: 10px;
+    font-weight: 700;
+    padding: 4px 0;
+    text-decoration: underline;
+  }
+  #key-setup { text-align: center; }
+  #key-setup input {
+    width: 100%;
+    padding: 12px;
+    border-radius: 10px;
+    border: 1px solid rgba(255,255,255,0.08);
+    background: #0e0e15;
+    color: #f0f0f0;
+    font-size: 14px;
+    margin: 14px 0;
+  }
+  #key-setup input:focus { outline: none; border-color: #6366f1; }
+</style>
+</head>
+<body>
+
+<div class="card">
+  <div id="key-setup" style="display:none;">
+    <h1>🧠 Connect Kortex</h1>
+    <p class="sub">Paste your API key (find it under "Copy API Key" in the app sidebar). Stored only on this device.</p>
+    <input type="text" id="key-input" placeholder="kt_live_..." autocomplete="off" autocapitalize="off" spellcheck="false" />
+    <button id="save-key-btn" style="width:100%; background:#6366f1; color:white;">Save & Continue</button>
+  </div>
+
+  <div id="capture-ui" style="display:none;">
+    <h1>🧠 Kortex Quick Capture</h1>
+    <p class="sub">Dump a thought — save it as a memory, or a task to do.</p>
+    <textarea id="capture-input" placeholder="e.g. remember I hate meetings before 11am&#10;e.g. buy groceries tomorrow high priority" autofocus></textarea>
+    <div class="buttons">
+      <button id="remember-btn">💭 Remember</button>
+      <button id="task-btn">✅ Add Task</button>
+    </div>
+    <div id="status"></div>
+    <div class="key-row">
+      <span id="key-hint"></span>
+      <button id="change-key-btn">Change API Key</button>
+    </div>
+  </div>
+</div>
+
+<script>
+(function () {
+  var API_BASE = 'https://daily-planner-00g2.onrender.com/api';
+  var STORAGE_KEY = 'kortex_capture_api_key';
+
+  var keySetup = document.getElementById('key-setup');
+  var captureUi = document.getElementById('capture-ui');
+  var keyInput = document.getElementById('key-input');
+  var saveKeyBtn = document.getElementById('save-key-btn');
+  var changeKeyBtn = document.getElementById('change-key-btn');
+  var keyHint = document.getElementById('key-hint');
+  var input = document.getElementById('capture-input');
+  var rememberBtn = document.getElementById('remember-btn');
+  var taskBtn = document.getElementById('task-btn');
+  var status = document.getElementById('status');
+
+  function getKey() { return localStorage.getItem(STORAGE_KEY) || ''; }
+
+  function showCaptureUi() {
+    var key = getKey();
+    keySetup.style.display = 'none';
+    captureUi.style.display = 'block';
+    keyHint.textContent = 'Key: ' + key.slice(0, 8) + '...' + key.slice(-4);
+    input.focus();
+  }
+
+  function showKeySetup() {
+    keySetup.style.display = 'block';
+    captureUi.style.display = 'none';
+    keyInput.value = getKey();
+    keyInput.focus();
+  }
+
+  saveKeyBtn.addEventListener('click', function () {
+    var key = keyInput.value.trim();
+    if (!key) return;
+    localStorage.setItem(STORAGE_KEY, key);
+    showCaptureUi();
+  });
+
+  keyInput.addEventListener('keydown', function (e) {
+    if (e.key === 'Enter') saveKeyBtn.click();
+  });
+
+  changeKeyBtn.addEventListener('click', showKeySetup);
+
+  function setStatus(text, ok) {
+    status.textContent = text;
+    status.className = ok ? 'ok' : 'err';
+  }
+
+  function setBusy(busy) {
+    rememberBtn.disabled = busy;
+    taskBtn.disabled = busy;
+  }
+
+  function submit(kind) {
+    var text = input.value.trim();
+    if (!text) return;
+
+    var url = kind === 'task' ? API_BASE + '/integration/task' : API_BASE + '/integration/memory';
+    var body = kind === 'task' ? { text: text } : { content: text };
+
+    setBusy(true);
+    setStatus('Saving...', true);
+
+    fetch(url, {
+      method: 'POST',
+      headers: { 'x-api-key': getKey(), 'Content-Type': 'application/json' },
+      body: JSON.stringify(body)
+    })
+      .then(function (res) {
+        return res.json().then(function (data) { return { ok: res.ok, status: res.status, data: data }; });
+      })
+      .then(function (result) {
+        setBusy(false);
+        if (result.ok) {
+          setStatus((kind === 'task' ? '✓ Task added: ' : '✓ Remembered: ') + text.slice(0, 40), true);
+          input.value = '';
+          input.focus();
+        } else if (result.status === 401) {
+          setStatus('Invalid API key — tap "Change API Key" below.', false);
+        } else {
+          setStatus('Failed: ' + (result.data && result.data.error ? result.data.error : 'Unknown error'), false);
+        }
+      })
+      .catch(function (err) {
+        setBusy(false);
+        setStatus('Network error: ' + err.message, false);
+      });
+  }
+
+  rememberBtn.addEventListener('click', function () { submit('memory'); });
+  taskBtn.addEventListener('click', function () { submit('task'); });
+
+  input.addEventListener('keydown', function (e) {
+    if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') submit('memory');
+  });
+
+  if (getKey()) {
+    showCaptureUi();
+  } else {
+    showKeySetup();
+  }
+})();
+</script>
+
+</body>
+</html>
