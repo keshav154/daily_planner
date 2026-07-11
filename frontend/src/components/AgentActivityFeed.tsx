@@ -146,7 +146,7 @@ export const AgentActivityFeed: React.FC = () => {
                 >
                   <div className="flex justify-between items-center pb-2 border-b border-black dark:border-white">
                     <span className="text-[10px] bg-[#C4B5FD] text-black border-2 border-black px-2 py-0.5 rounded-none font-black uppercase">
-                      {run.trigger.replace('_', ' ')}
+                      {run.trigger.replaceAll('_', ' ')}
                     </span>
                     <span className="text-[9px] text-neutral-500 dark:text-neutral-400 font-bold">
                       {new Date(run.createdAt).toLocaleTimeString()}

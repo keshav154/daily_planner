@@ -29,6 +29,18 @@ function synthesizeFallbackRationale(executedLogs: string[]): string {
 }
 
 /**
+ * Open models occasionally emit degenerate final text after tool calls
+ * (";;;;", lone punctuation, whitespace). Treat anything without at least a
+ * few real words as no rationale, so the synthesized fallback is used instead
+ * of showing garbage in the activity feed.
+ */
+function isUsableRationale(text: string | null | undefined): boolean {
+  if (!text) return false;
+  const words = text.trim().match(/[a-zA-Z]{3,}/g);
+  return !!words && words.length >= 3;
+}
+
+/**
  * Runs a real Think-Act-Observe tool-calling loop against NVIDIA NIM
  * (OpenAI-compatible function calling). The model decides which tools to
  * call, sees the results, and can call more tools in response — instead of
@@ -91,15 +103,15 @@ export async function runNimToolLoop(
 
       messages.push({ role: 'tool', tool_call_id: call.id, name: call.function.name, content: execResult.result });
 
-      if (response.content) rationale = response.content;
+      if (isUsableRationale(response.content)) rationale = response.content!;
       continue;
     }
 
-    rationale = response.content || rationale;
+    if (isUsableRationale(response.content)) rationale = response.content!;
     break;
   }
 
-  if (!rationale) rationale = synthesizeFallbackRationale(executedLogs);
+  if (!isUsableRationale(rationale)) rationale = synthesizeFallbackRationale(executedLogs);
   return { rationale, executedLogs, suggestions };
 }
 
@@ -171,14 +183,14 @@ export async function runAnthropicToolLoop(
         toolResults.push({ type: 'tool_result', tool_use_id: block.id, content: execResult.result });
       }
       messages.push({ role: 'user', content: toolResults });
-      if (textContent) rationale = textContent;
+      if (isUsableRationale(textContent)) rationale = textContent;
       continue;
     }
 
-    rationale = textContent || rationale;
+    if (isUsableRationale(textContent)) rationale = textContent;
     break;
   }
 
-  if (!rationale) rationale = synthesizeFallbackRationale(executedLogs);
+  if (!isUsableRationale(rationale)) rationale = synthesizeFallbackRationale(executedLogs);
   return { rationale, executedLogs, suggestions };
 }

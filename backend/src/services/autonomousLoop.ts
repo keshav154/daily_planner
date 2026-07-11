@@ -153,6 +153,7 @@ Guidance:
 3. Task load & Calendar Load-Balancing: If the user is in "office" workMode (6-hour capacity), and total estimated task time exceeds 4 hours, call defer_task on low-priority items or propose_reorder to prioritize.
 4. Overdue tasks: Use break_down_task or schedule_time_block to make overdue todo items actionable.
 5. Past memories: Use search_memories if you need more context before acting, and never contradict an accepted user preference.
+6. Ground your reasoning in history: before proposing schedule or workload changes, call get_task_history and justify the change with the user's actual track record (completion rates, estimation accuracy, peak focus hours) — not generic productivity advice.
 
 Only call tools when there is a genuine, specific issue to address — do not act just to act. Small, safe, reversible changes (create_task, schedule_time_block, break_down_task, defer_task, create_nudge_memory, add_goal_note) should be executed directly via tool calls. Anything that reshuffles the whole day (propose_reorder) is queued for human approval instead of applied immediately.
 When you are done taking actions, respond with a final short text message summarizing your rationale (no further tool calls).`;

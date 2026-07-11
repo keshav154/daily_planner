@@ -3,6 +3,7 @@ import mongoose from 'mongoose';
 import { User, Task, Log, AgentMemory, AgentRun, ITask, ILog, IAgentMemory } from '../models/Schemas';
 import { queryNvidiaNim } from '../config/nvidia';
 import { getRelevantMemories, getPatternMemories, getUserRules, findSimilarMemory } from '../services/similarity';
+import { computeTaskHistoryStats, formatStatsDigest } from '../services/taskHistory';
 
 // Instantiate Anthropic Client
 const getAnthropicClient = (): Anthropic | null => {
@@ -459,7 +460,25 @@ export const runReflectionLoop = async (
   }
 
   try {
-    const prompt = `You are a personalized Productivity Agent. Run an end-of-day reflection on the user's logged logs vs planned tasks.
+    // Grounding: aggregate the user's full task history so insights come from
+    // their actual track record, not from a single day's snapshot.
+    const historyStats = await computeTaskHistoryStats(userId, 90);
+    const statsDigest = formatStatsDigest(historyStats);
+
+    const jsonSchemaBlock = `Return ONLY a JSON object matching this schema, no other text:
+{
+  "reflectionSummary": "String summary of the day",
+  "insights": [
+    {
+      "type": "pattern | preference | adjustment | general",
+      "category": "estimation | scheduling | productivity | health",
+      "content": "Specific insight description citing concrete numbers from the stats"
+    }
+  ]
+}`;
+
+    // STAGE 1: DRAFT — reflect on today, grounded in the long-term stats
+    const draftPrompt = `You are a personalized Productivity Agent. Run an end-of-day reflection on the user's logged logs vs planned tasks.
 Analyze task completion rates, durations (estimates vs actual time), and highlight recurring trends.
 
 Today's Context:
@@ -467,38 +486,44 @@ Today's Context:
 - Work Logs: ${JSON.stringify(context.dailyLogs.map((l: any) => ({ title: l.title, duration: l.duration, notes: l.notes })), null, 2)}
 - Existing Memories: ${JSON.stringify(context.memories.map((m: any) => m.content), null, 2)}
 
+Long-term track record (computed from the user's real task data — treat as ground truth):
+${statsDigest}
+
 Provide:
 1. A summary paragraph reflecting on the day (achievements, issues, streaks).
-2. Actionable, long-term insights (memories) to store. Keep them highly specific: e.g., "You consistently underestimate writing tasks by ~40%", "You struggle to complete High priority tasks scheduled after 3 PM". Do not repeat existing memories.
+2. Actionable, long-term insights (memories) to store. Every insight MUST be supported by the long-term track record above and cite its concrete numbers (e.g. "Your Learning tasks complete at only 40% vs 85% for Work — schedule them earlier in the day"). Do not repeat existing memories. Do not output generic productivity advice that could apply to anyone.
 
-Return ONLY a JSON object matching this schema, no other text:
-{
-  "reflectionSummary": "String summary of the day",
-  "insights": [
-    {
-      "type": "pattern | preference | adjustment | general",
-      "category": "estimation | scheduling | productivity | health",
-      "content": "Specific insight description"
+${jsonSchemaBlock}`;
+
+    const draftText = await askLLM(draftPrompt, 'You are a data-grounded productivity analyst.', !!isNvidiaActive, client);
+
+    // STAGE 2: VERIFY — self-check each draft insight against the stats and
+    // drop anything the numbers don't support. This is the "self reasoning"
+    // pass: the model audits its own claims before they become memories.
+    const verifyPrompt = `You are a strict data auditor. Below are draft reflection insights and the ground-truth statistics they must be based on.
+
+Ground-truth statistics:
+${statsDigest}
+
+Draft output:
+${draftText}
+
+For each insight, verify it is directly supported by the statistics above:
+- DROP any insight that is generic advice, speculation, or not backed by a specific number in the stats.
+- CORRECT any insight whose numbers don't match the stats.
+- KEEP the reflectionSummary (lightly improve wording if needed).
+
+${jsonSchemaBlock}`;
+
+    const verifiedText = await askLLM(verifyPrompt, 'You are a strict data auditor.', !!isNvidiaActive, client);
+
+    let reflection: ReflectionResult;
+    try {
+      reflection = parseAiJson<ReflectionResult>(verifiedText);
+    } catch {
+      // If the verification pass returns unparseable output, fall back to the draft
+      reflection = parseAiJson<ReflectionResult>(draftText);
     }
-  ]
-}`;
-
-    let responseText = '';
-
-    if (isNvidiaActive) {
-      responseText = await queryNvidiaNim([
-        { role: 'user', content: prompt }
-      ], process.env.NVIDIA_MODEL || 'meta/llama-3.3-70b-instruct', 0.2, 1000);
-    } else if (client) {
-      const response = await client.messages.create({
-        model: 'claude-sonnet-5',
-        max_tokens: 1000,
-        messages: [{ role: 'user', content: prompt }]
-      });
-      responseText = response.content[0].type === 'text' ? response.content[0].text : '';
-    }
-
-    const reflection: ReflectionResult = parseAiJson<ReflectionResult>(responseText);
 
     // Save reflection insights into AgentMemory — skipping near-duplicates of
     // insights that already exist. The prompt asks the model not to repeat

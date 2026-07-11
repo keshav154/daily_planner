@@ -3,6 +3,7 @@ import { Task, AgentMemory } from '../models/Schemas';
 import { Goal } from '../models/Goal';
 import Habit from '../models/Habit';
 import { getRelevantMemories, findSimilarMemory } from '../services/similarity';
+import { computeTaskHistoryStats, formatStatsDigest } from '../services/taskHistory';
 import { ToolSchema } from '../config/nvidia';
 
 export interface ToolContext {
@@ -53,6 +54,20 @@ export const AGENT_TOOLS: ToolSchema[] = [
           limit: { type: 'number', description: 'Max results (default 5)' }
         },
         required: ['query']
+      }
+    }
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'get_task_history',
+      description: 'Get aggregated statistics over the user\'s full task history: completion rates by category/priority/weekday, estimation accuracy, chronically overdue tasks, and peak focus hours. Use this to ground suggestions in the user\'s actual track record instead of guessing.',
+      parameters: {
+        type: 'object',
+        properties: {
+          days: { type: 'number', description: 'History window in days (default 90, max 365)' }
+        },
+        required: []
       }
     }
   },
@@ -261,7 +276,7 @@ export const CHAT_TOOLS: ToolSchema[] = [...AGENT_TOOLS, ...CHAT_ONLY_TOOLS];
  * model's next reasoning step but must NOT be reported as "actions taken" —
  * otherwise digests and activity feeds fill up with raw task-list JSON.
  */
-export const READ_ONLY_TOOLS = new Set(['get_tasks', 'search_memories']);
+export const READ_ONLY_TOOLS = new Set(['get_tasks', 'search_memories', 'get_task_history']);
 
 function summarizeTasks(tasks: any[]): string {
   if (tasks.length === 0) return 'No matching tasks.';
@@ -312,7 +327,24 @@ export async function executeAgentTool(
       return { result: JSON.stringify(memories.map((m: any) => m.content)) };
     }
 
+    case 'get_task_history': {
+      const stats = await computeTaskHistoryStats(userId, args.days || 90);
+      return { result: formatStatsDigest(stats) };
+    }
+
     case 'create_task': {
+      if (!args.title) return { result: 'Error: title is required.' };
+      // The hourly loop re-detects the same condition (e.g. a lagging goal)
+      // every cycle — refuse to stack another copy of an identical open task.
+      const existingOpen = await Task.findOne({
+        userId,
+        title: new RegExp(`^${args.title.trim().replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`, 'i'),
+        status: { $in: ['todo', 'in-progress'] }
+      });
+      if (existingOpen) {
+        return { result: `Skipped: an open task titled "${existingOpen.title}" already exists (id: ${existingOpen._id.toString()}, status: ${existingOpen.status}).` };
+      }
+
       const lastTask = await Task.findOne({ userId }).sort({ order: -1 });
       const nextOrder = lastTask ? lastTask.order + 1 : 0;
       const task = new Task({
@@ -415,6 +447,19 @@ export async function executeAgentTool(
     case 'add_goal_note': {
       const goal = await Goal.findOne({ _id: args.goalId, userId });
       if (!goal) return { result: `Error: goal ${args.goalId} not found.` };
+      if (!args.note) return { result: 'Error: note is required.' };
+      // Skip when an equivalent note is already on the goal, and cap
+      // autonomous notes at one per goal per day — the hourly loop otherwise
+      // appends a (re-phrased) copy of the same deadline warning every cycle.
+      const coreNote = String(args.note).trim().toLowerCase();
+      const todayMarker = `(${now.toLocaleDateString()})`;
+      const alreadyNoted = goal.agentNotes.some(n =>
+        n.toLowerCase().includes(coreNote.slice(0, 80)) ||
+        (n.startsWith('[Autonomous Brain]') && n.endsWith(todayMarker))
+      );
+      if (alreadyNoted) {
+        return { result: `Skipped: goal "${goal.title}" already has an autonomous note for today.` };
+      }
       goal.agentNotes.push(`[Autonomous Brain] ${args.note} (${now.toLocaleDateString()})`);
       await goal.save();
       return { result: `Added note to goal "${goal.title}".` };
