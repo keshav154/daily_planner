@@ -53,9 +53,7 @@
     resize: vertical;
   }
   textarea:focus { outline: none; border-color: #6366f1; }
-  .buttons { display: flex; gap: 10px; margin-top: 12px; }
   button {
-    flex: 1;
     padding: 13px 10px;
     border-radius: 10px;
     border: none;
@@ -66,16 +64,33 @@
   }
   button:active { opacity: 0.7; }
   button:disabled { opacity: 0.4; cursor: default; }
-  #remember-btn { background: #6366f1; color: white; }
-  #task-btn { background: #27272f; color: #e5e5e5; border: 1px solid rgba(255,255,255,0.08); }
+  #ask-btn {
+    width: 100%;
+    margin-top: 12px;
+    background: linear-gradient(135deg, #6366f1, #8b5cf6);
+    color: white;
+    font-size: 14px;
+    padding: 14px;
+  }
+  .fallback-row { display: flex; gap: 8px; margin-top: 8px; }
+  .fallback-row button {
+    flex: 1;
+    background: #1e1e28;
+    color: #999;
+    border: 1px solid rgba(255,255,255,0.06);
+    font-size: 11px;
+    padding: 9px 8px;
+  }
   #status {
     margin-top: 14px;
     font-size: 12px;
-    font-weight: 600;
+    line-height: 1.5;
     min-height: 16px;
   }
-  #status.ok { color: #34d399; }
-  #status.err { color: #f87171; }
+  #status .response-text { font-weight: 600; color: #e5e5e5; }
+  #status .response-text.err { color: #f87171; }
+  #status ul { margin: 8px 0 0; padding-left: 18px; color: #34d399; font-weight: 600; }
+  #status li { margin-bottom: 3px; }
   .key-row {
     margin-top: 18px;
     padding-top: 14px;
@@ -87,7 +102,6 @@
     color: #666;
   }
   .key-row button {
-    flex: none;
     background: none;
     border: none;
     color: #6366f1;
@@ -122,12 +136,15 @@
 
   <div id="capture-ui" style="display:none;">
     <h1>🧠 Kortex Quick Capture</h1>
-    <p class="sub">Dump a thought — save it as a memory, or a task to do.</p>
-    <textarea id="capture-input" placeholder="e.g. remember I hate meetings before 11am&#10;e.g. buy groceries tomorrow high priority" autofocus></textarea>
-    <div class="buttons">
-      <button id="remember-btn">💭 Remember</button>
-      <button id="task-btn">✅ Add Task</button>
+    <p class="sub">Say what's on your mind — Kortex figures out what to do with it.</p>
+    <textarea id="capture-input" placeholder="e.g. I have an Istio exam on Aug 20, add it to my schedule&#10;e.g. remember I hate meetings before 11am" autofocus></textarea>
+
+    <button id="ask-btn">🧠 Ask Kortex</button>
+    <div class="fallback-row">
+      <button id="remember-btn" title="Instantly save as a memory, no AI reasoning">💭 Quick Remember</button>
+      <button id="task-btn" title="Instantly add as a task, no AI reasoning">✅ Quick Task</button>
     </div>
+
     <div id="status"></div>
     <div class="key-row">
       <span id="key-hint"></span>
@@ -148,9 +165,11 @@
   var changeKeyBtn = document.getElementById('change-key-btn');
   var keyHint = document.getElementById('key-hint');
   var input = document.getElementById('capture-input');
+  var askBtn = document.getElementById('ask-btn');
   var rememberBtn = document.getElementById('remember-btn');
   var taskBtn = document.getElementById('task-btn');
   var status = document.getElementById('status');
+  var allButtons = [askBtn, rememberBtn, taskBtn];
 
   function getKey() { return localStorage.getItem(STORAGE_KEY) || ''; }
 
@@ -182,17 +201,20 @@
 
   changeKeyBtn.addEventListener('click', showKeySetup);
 
-  function setStatus(text, ok) {
-    status.textContent = text;
-    status.className = ok ? 'ok' : 'err';
-  }
-
   function setBusy(busy) {
-    rememberBtn.disabled = busy;
-    taskBtn.disabled = busy;
+    allButtons.forEach(function (b) { b.disabled = busy; });
   }
 
-  function submit(kind) {
+  function renderResult(text, actions, isError) {
+    var html = '<div class="response-text' + (isError ? ' err' : '') + '">' + text.replace(/</g, '&lt;') + '</div>';
+    if (actions && actions.length > 0) {
+      html += '<ul>' + actions.map(function (a) { return '<li>' + a.replace(/</g, '&lt;') + '</li>'; }).join('') + '</ul>';
+    }
+    status.innerHTML = html;
+  }
+
+  // Fast, deterministic paths: no AI reasoning, single API call, instant.
+  function submitFast(kind) {
     var text = input.value.trim();
     if (!text) return;
 
@@ -200,7 +222,7 @@
     var body = kind === 'task' ? { text: text } : { content: text };
 
     setBusy(true);
-    setStatus('Saving...', true);
+    renderResult('Saving...', null, false);
 
     fetch(url, {
       method: 'POST',
@@ -213,26 +235,62 @@
       .then(function (result) {
         setBusy(false);
         if (result.ok) {
-          setStatus((kind === 'task' ? '✓ Task added: ' : '✓ Remembered: ') + text.slice(0, 40), true);
+          renderResult((kind === 'task' ? '✓ Task added: ' : '✓ Remembered: ') + text.slice(0, 60), null, false);
           input.value = '';
           input.focus();
         } else if (result.status === 401) {
-          setStatus('Invalid API key — tap "Change API Key" below.', false);
+          renderResult('Invalid API key — tap "Change API Key" below.', null, true);
         } else {
-          setStatus('Failed: ' + (result.data && result.data.error ? result.data.error : 'Unknown error'), false);
+          renderResult('Failed: ' + (result.data && result.data.error ? result.data.error : 'Unknown error'), null, true);
         }
       })
       .catch(function (err) {
         setBusy(false);
-        setStatus('Network error: ' + err.message, false);
+        renderResult('Network error: ' + err.message, null, true);
       });
   }
 
-  rememberBtn.addEventListener('click', function () { submit('memory'); });
-  taskBtn.addEventListener('click', function () { submit('task'); });
+  // Smart path: routes through the same AI reasoning as the in-app chat —
+  // can create tasks, remember facts, update goals, all from one message.
+  function submitSmart() {
+    var text = input.value.trim();
+    if (!text) return;
+
+    setBusy(true);
+    renderResult('🧠 Thinking...', null, false);
+
+    fetch(API_BASE + '/integration/smart-capture', {
+      method: 'POST',
+      headers: { 'x-api-key': getKey(), 'Content-Type': 'application/json' },
+      body: JSON.stringify({ text: text })
+    })
+      .then(function (res) {
+        return res.json().then(function (data) { return { ok: res.ok, status: res.status, data: data }; });
+      })
+      .then(function (result) {
+        setBusy(false);
+        if (result.ok) {
+          renderResult(result.data.response, result.data.executedActions, false);
+          input.value = '';
+          input.focus();
+        } else if (result.status === 401) {
+          renderResult('Invalid API key — tap "Change API Key" below.', null, true);
+        } else {
+          renderResult('Failed: ' + (result.data && result.data.error ? result.data.error : 'Unknown error'), null, true);
+        }
+      })
+      .catch(function (err) {
+        setBusy(false);
+        renderResult('Network error: ' + err.message, null, true);
+      });
+  }
+
+  askBtn.addEventListener('click', submitSmart);
+  rememberBtn.addEventListener('click', function () { submitFast('memory'); });
+  taskBtn.addEventListener('click', function () { submitFast('task'); });
 
   input.addEventListener('keydown', function (e) {
-    if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') submit('memory');
+    if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') submitSmart();
   });
 
   if (getKey()) {

@@ -6,6 +6,7 @@ import { parseNaturalLanguageTask } from '../agent/parser';
 import { handleTaskResolution } from '../services/resolutionHook';
 import { queryNvidiaNim } from '../config/nvidia';
 import { findSimilarMemory } from '../services/similarity';
+import { processAgentMessage } from '../services/agentChatService';
 import Anthropic from '@anthropic-ai/sdk';
 
 const router = Router();
@@ -203,6 +204,27 @@ router.post('/memory', async (req: Request, res: Response) => {
   } catch (error: any) {
     console.error('Integration memory dump failed:', error);
     res.status(500).json({ error: 'Failed to record technology memory' });
+  }
+});
+
+// 4b. POST /api/integration/smart-capture
+// Same reasoning the in-app chat panel uses (context-aware, tool-calling),
+// but as a single one-shot message with no conversation history — for
+// external quick-capture tools (the capture.html page, phone Shortcuts,
+// scripts) where the plain /memory endpoint is too dumb to act on requests
+// like "I have an exam on Aug 20, add it to my schedule and adjust my plan".
+router.post('/smart-capture', async (req: Request, res: Response) => {
+  try {
+    const userId = (req as any).userId;
+    const { text } = req.body;
+
+    if (!text) return res.status(400).json({ error: 'Provide "text" string' });
+
+    const result = await processAgentMessage(userId, text, [], 'smart_capture');
+    res.status(201).json(result);
+  } catch (error: any) {
+    console.error('Integration smart-capture failed:', error);
+    res.status(500).json({ error: error.message || 'Failed to process capture' });
   }
 });
 

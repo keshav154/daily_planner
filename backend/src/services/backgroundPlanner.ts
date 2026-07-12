@@ -66,9 +66,18 @@ export const runAutonomousChecks = async () => {
       log('info', `Running hourly autonomous second brain audit for ${user.email} (Local Hour: ${userHour})...`);
       await runAutonomousAgentLoop(userId, 'background_hourly_check');
 
-      // 2. Morning Planner: run at most once per calendar day, between 6 AM and 9 AM user local time
-      if (userHour >= 6 && userHour < 9 && agentState.lastMorningPlanDate !== userDateStr) {
-        log('info', `Running automated morning planning check for ${user.email}...`);
+      // 2. Morning Planner: prefers 6-9 AM user local time, but runs as a
+      // catch-up any time up to 9 PM if it hasn't run yet today. The strict
+      // 6-9 window used to mean that if the server was asleep the whole time
+      // (Render's free tier spins down after ~15 min of no traffic, and this
+      // scheduler is an in-process setInterval that simply doesn't tick while
+      // asleep), the day's plan/digest was silently skipped forever — the
+      // window had already passed by the time anything woke the server back
+      // up. At most once per day either way, via the same date guard.
+      const inCatchUpWindow = userHour >= 6 && userHour < 21;
+
+      if (inCatchUpWindow && agentState.lastMorningPlanDate !== userDateStr) {
+        log('info', `Running automated morning planning check for ${user.email}${userHour >= 9 ? ' (catch-up)' : ''}...`);
         const plan = await runPlanningLoop(userId, 'background_auto_plan');
         if (plan) {
           user.agentState = { ...agentState, lastMorningPlanDate: userDateStr };
@@ -82,7 +91,7 @@ export const runAutonomousChecks = async () => {
       // separate guard from the planner above so it still fires even if the
       // planner step was skipped (e.g. already ran earlier this window).
       if (
-        userHour >= 6 && userHour < 9 &&
+        inCatchUpWindow &&
         user.telegramChatId &&
         agentState.lastTelegramDigestDate !== userDateStr
       ) {

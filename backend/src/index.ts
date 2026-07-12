@@ -38,7 +38,10 @@ app.use(cors({
 }));
 app.use(express.json());
 
-// Base health check
+// Base health check. Also doubles as the keep-alive target for an external
+// uptime pinger (see .env.example) — the background scheduler is in-process,
+// so on Render's free tier it stops ticking entirely whenever this process
+// sleeps from inactivity.
 app.get('/health', (req, res) => {
   res.json({ status: 'ok', time: new Date().toISOString() });
 });

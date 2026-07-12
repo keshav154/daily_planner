@@ -1,13 +1,9 @@
 import { Router, Response } from 'express';
-import mongoose from 'mongoose';
 import { AgentRun, AgentMemory, Task } from '../models/Schemas';
-import Habit from '../models/Habit';
-import { Goal } from '../models/Goal';
 import { authenticateToken, AuthRequest } from '../middleware/auth';
 import { runPlanningLoop, runReflectionLoop, gatherUserContext } from '../agent/loop';
 import { queryNvidiaNim } from '../config/nvidia';
-import { CHAT_TOOLS } from '../agent/tools';
-import { runNimToolLoop, runAnthropicToolLoop, ToolLoopResult } from '../agent/toolLoop';
+import { processAgentMessage } from '../services/agentChatService';
 import Anthropic from '@anthropic-ai/sdk';
 
 const router = Router();
@@ -294,96 +290,9 @@ router.post('/chat', authenticateToken, async (req: AuthRequest, res: Response) 
       return res.status(400).json({ error: 'Message is required' });
     }
 
-    const context = await gatherUserContext(userId);
-    const activeGoals = await Goal.find({ userId, status: 'active' });
-    const activeHabits = await Habit.find({ userId, isActive: true });
-
-    const systemPrompt = `You are Kortex Assistant, custom-built for Keshav. You are a premium AI daily productivity assistant.
-You are having an interactive chat with the user to help them plan, structure, and optimize their schedule.
-
-Current Context Snapshot:
-- Current Time (UTC): ${context.currentTime}
-- User Timezone/Preferences: ${context.user.timezone} (${context.user.preferences.workingHoursStart} to ${context.user.preferences.workingHoursEnd})
-- Peak Energy: ${context.user.preferences.peakEnergyTime}
-- Today's Tasks: ${JSON.stringify(context.activeTasks.map(t => ({ id: t._id, title: t.title, status: t.status, priority: t.priority, estimatedTime: t.estimatedTime, actualTime: t.actualTime })), null, 2)}
-- Today's Work Logs: ${JSON.stringify(context.dailyLogs.map(l => ({ title: l.title, duration: l.duration })), null, 2)}
-- Agent Memories: ${JSON.stringify(context.memories.map(m => m.content), null, 2)}
-- Active Goals: ${JSON.stringify(activeGoals.map(g => ({ id: g._id, title: g.title, progress: g.progress, deadline: g.deadline, milestones: g.milestones.map(m => ({ title: m.title, completed: m.completed })) })), null, 2)}
-- Habits: ${JSON.stringify(activeHabits.map(h => ({ id: h._id, title: h.title, streak: h.currentStreak })), null, 2)}
-
-Use the available tools to take action whenever the user asks you to create, delete, reschedule, break down, or organize something — don't just describe what you would do, actually call the tool. Reordering the whole day's task list is disruptive, so use propose_reorder for that instead of applying it directly; everything else (create_task, delete_task, schedule_time_block, break_down_task, defer_task, add_habit, create_goal, complete_milestone, add_goal_note) is safe to execute immediately. Not every message needs a tool call — plain questions just get a plain answer.
-
-You are also the user's second brain — you remember what they tell you:
-- When the user mentions a durable fact, deadline, preference, constraint, or says "remember...", call remember_fact to store it (convert relative dates like "next Friday" to absolute dates using the current time above). If the fact also implies work to do, create the task AND remember the fact.
-- Before answering questions about the user's own life, habits, or past ("when is my exam?", "what did I say about..."), call search_memories first instead of guessing — the context snapshot above only shows a small sample of memories.
-After any tool calls, reply with a short, friendly summary of what you did (or your answer, if no action was needed).`;
-
-    const nvidiaKey = process.env.NVIDIA_API_KEY;
-    const isNvidiaActive = !!(nvidiaKey && nvidiaKey !== 'your_nvidia_api_key_here');
-    const anthropicApiKey = process.env.ANTHROPIC_API_KEY;
-    const isAnthropicActive = !!(anthropicApiKey && anthropicApiKey !== 'your_anthropic_api_key_here');
-
-    const toolCtx = { userId, now: new Date() };
     const chatHistory = (history || []).map((h: any) => ({ role: h.role, content: h.content }));
-
-    let loopResult: ToolLoopResult | null = null;
-
-    if (isNvidiaActive) {
-      try {
-        loopResult = await runNimToolLoop(systemPrompt, message, toolCtx, { tools: CHAT_TOOLS, history: chatHistory });
-      } catch (nvidiaErr) {
-        console.warn('[Chat] NIM tool loop failed, attempting Anthropic fallback:', nvidiaErr);
-      }
-    }
-
-    if (!loopResult && isAnthropicActive) {
-      try {
-        const anthropic = new Anthropic({ apiKey: anthropicApiKey });
-        loopResult = await runAnthropicToolLoop(anthropic, systemPrompt, message, toolCtx, { tools: CHAT_TOOLS, history: chatHistory });
-      } catch (anthropicErr) {
-        console.error('[Chat] Anthropic tool loop failed:', anthropicErr);
-      }
-    }
-
-    const responseText = loopResult
-      ? loopResult.rationale
-      : `Offline Mode: I received your message "${message}". Add an API key (Claude or NVIDIA NIM) to enable interactive chat scheduling.`;
-    const executedActions = loopResult?.executedLogs || [];
-    const suggestions = loopResult?.suggestions || [];
-
-    let runId = null;
-    const chatContextSnapshot = {
-      ...context,
-      goals: activeGoals.map(g => ({ id: g._id.toString(), title: g.title, progress: g.progress })),
-      habits: activeHabits.map(h => ({ id: h._id.toString(), title: h.title, streak: h.currentStreak }))
-    };
-
-    if (suggestions.length > 0) {
-      const agentRun = new AgentRun({
-        userId,
-        trigger: 'chat',
-        contextSnapshot: chatContextSnapshot,
-        planOutput: {
-          rationale: `Chat: ${message}`,
-          suggestions
-        },
-        executedActions,
-        actionsTaken: suggestions.map((s: any) => ({
-          suggestionId: s.id,
-          actionType: s.actionType,
-          status: 'pending'
-        }))
-      });
-      await agentRun.save();
-      runId = agentRun._id;
-    }
-
-    res.json({
-      response: responseText,
-      executedActions,
-      suggestions,
-      runId
-    });
+    const result = await processAgentMessage(userId, message, chatHistory, 'chat');
+    res.json(result);
   } catch (error: any) {
     console.error('Agent chat error:', error);
     res.status(500).json({ error: 'Failed to process agent chat' });

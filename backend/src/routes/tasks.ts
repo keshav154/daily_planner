@@ -18,12 +18,24 @@ router.get('/', authenticateToken, async (req: AuthRequest, res: Response) => {
     if (date && typeof date === 'string') {
       const startOfDay = new Date(`${date}T00:00:00.000Z`);
       const endOfDay = new Date(`${date}T23:59:59.999Z`);
+      const todayStr = new Date().toISOString().split('T')[0];
 
-      // Match tasks due today OR tasks that are overdue (due in the past and still todo/in-progress)
-      query.$or = [
-        { dueDate: { $gte: startOfDay, $lte: endOfDay } },
-        { dueDate: { $lt: startOfDay }, status: { $in: ['todo', 'in-progress'] } }
-      ];
+      if (date === todayStr) {
+        // Viewing today: also surface overdue open tasks so nothing falls
+        // through the cracks.
+        query.$or = [
+          { dueDate: { $gte: startOfDay, $lte: endOfDay } },
+          { dueDate: { $lt: startOfDay }, status: { $in: ['todo', 'in-progress'] } }
+        ];
+      } else {
+        // Viewing any other date (past review or future planning): show only
+        // what's actually due that day. Without this branch, every open task
+        // in the backlog matches "overdue" relative to a future date being
+        // browsed, since the overdue clause has no lower bound — planning
+        // ahead would otherwise dump the entire current backlog onto every
+        // future date checked.
+        query.dueDate = { $gte: startOfDay, $lte: endOfDay };
+      }
     }
 
     const tasks = await Task.find(query).sort({ order: 1, createdAt: -1 });
