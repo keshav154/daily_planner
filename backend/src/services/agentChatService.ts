@@ -5,6 +5,7 @@ import Habit from '../models/Habit';
 import { gatherUserContext } from '../agent/loop';
 import { CHAT_TOOLS } from '../agent/tools';
 import { runNimToolLoop, runAnthropicToolLoop, ToolLoopResult, ToolLoopHistoryTurn } from '../agent/toolLoop';
+import { filterDuplicateSuggestions } from './suggestionDedupe';
 
 export interface AgentMessageResult {
   response: string;
@@ -84,7 +85,7 @@ After any tool calls, reply with a short, friendly summary of what you did (or y
     ? loopResult.rationale
     : `Offline Mode: I received your message "${message}". Add an API key (Claude or NVIDIA NIM) to enable AI reasoning.`;
   const executedActions = loopResult?.executedLogs || [];
-  const suggestions = loopResult?.suggestions || [];
+  const suggestions = await filterDuplicateSuggestions(userId, loopResult?.suggestions || []);
 
   let runId: string | null = null;
   if (suggestions.length > 0) {

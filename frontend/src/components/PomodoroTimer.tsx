@@ -15,6 +15,16 @@ interface PomodoroTimerProps {
 type SoundType = 'off' | 'white' | 'rain' | 'ocean' | 'campfire' | 'forest' | 'binaural';
 const AVAILABLE_SOUNDS: SoundType[] = ['off', 'white', 'rain', 'ocean', 'campfire', 'forest', 'binaural'];
 
+// Standard Pomodoro cadence: short break after each session, long break after
+// every 4th — the single most consistently-cited "must have" across current
+// Pomodoro app reviews, and the biggest gap in the previous single-timer design.
+type SessionType = 'work' | 'shortBreak' | 'longBreak';
+const SHORT_BREAK_MINS = 5;
+const LONG_BREAK_MINS = 20;
+const CYCLES_BEFORE_LONG_BREAK = 4;
+
+const todayCountStorageKey = () => `kortex-pomodoro-count-${new Date().toISOString().split('T')[0]}`;
+
 export const PomodoroTimer: React.FC<PomodoroTimerProps> = ({ tasks, onTimerComplete }) => {
   const [activeTaskId, setActiveTaskId] = useState('');
   const [timeLeft, setTimeLeft] = useState(25 * 60); // 25 minutes default
@@ -23,7 +33,25 @@ export const PomodoroTimer: React.FC<PomodoroTimerProps> = ({ tasks, onTimerComp
   const [preset, setPreset] = useState(25); // 25 or 50
   const [focusMode, setFocusMode] = useState(false);
   const [quoteIndex, setQuoteIndex] = useState(0);
+  const [sessionType, setSessionType] = useState<SessionType>('work');
+  const [pomodorosInCycle, setPomodorosInCycle] = useState(0); // 0-3, resets after a long break
+  const [todayCount, setTodayCount] = useState(0); // completed focus sessions today, persisted locally
   const wakeLockRef = useRef<any>(null);
+
+  // Load today's completed-session count (resets naturally at midnight since
+  // the storage key is date-scoped).
+  useEffect(() => {
+    const stored = localStorage.getItem(todayCountStorageKey());
+    setTodayCount(stored ? parseInt(stored, 10) : 0);
+  }, []);
+
+  const incrementTodayCount = () => {
+    setTodayCount(prev => {
+      const next = prev + 1;
+      localStorage.setItem(todayCountStorageKey(), String(next));
+      return next;
+    });
+  };
 
   const MOTIVATIONAL_QUOTES = [
     "Focus is a muscle, and you are building it right now.",
@@ -99,6 +127,7 @@ export const PomodoroTimer: React.FC<PomodoroTimerProps> = ({ tasks, onTimerComp
   // Sync preset changes
   const applyPreset = (mins: number) => {
     setPreset(mins);
+    setSessionType('work');
     setTimeLeft(mins * 60);
     setIsRunning(false);
     stopAudio();
@@ -159,15 +188,18 @@ export const PomodoroTimer: React.FC<PomodoroTimerProps> = ({ tasks, onTimerComp
   useEffect(() => {
     if ('mediaSession' in navigator && isRunning) {
       const activeTask = tasks.find(t => t._id === activeTaskId);
+      const title = sessionType === 'work'
+        ? (activeTask ? activeTask.title : 'General Focus Session')
+        : sessionType === 'shortBreak' ? 'Short Break' : 'Long Break';
       navigator.mediaSession.metadata = new MediaMetadata({
-        title: activeTask ? activeTask.title : 'General Focus Session',
+        title,
         artist: 'Kortex by Keshav',
         album: 'Focus Pomodoro Tracker'
       });
       navigator.mediaSession.setActionHandler('play', () => setIsRunning(true));
       navigator.mediaSession.setActionHandler('pause', () => setIsRunning(false));
     }
-  }, [isRunning, activeTaskId, tasks]);
+  }, [isRunning, activeTaskId, tasks, sessionType]);
 
   // Request notification permissions
   useEffect(() => {
@@ -210,42 +242,80 @@ export const PomodoroTimer: React.FC<PomodoroTimerProps> = ({ tasks, onTimerComp
     }
   };
 
+  const notify = (title: string, body: string) => {
+    if ('Notification' in window && Notification.permission === 'granted') {
+      new Notification(title, { body, tag: 'kortex-timer-complete' });
+    }
+  };
+
   const handleComplete = () => {
-    setIsRunning(false);
     stopAudio();
     setSound('off');
-
-    // Play pleasant completion bell chime
     playChime();
 
-    // Trigger local push notification
-    if ('Notification' in window && Notification.permission === 'granted') {
-      const activeTask = tasks.find(t => t._id === activeTaskId);
-      new Notification('Focus Session Complete! 🎯', {
-        body: activeTask ? `Finished: ${activeTask.title}` : 'Your focus session completed. Time to take a break!',
-        tag: 'kortex-timer-complete'
-      });
-    }
-    
-    // Find active task
-    const task = tasks.find(t => t._id === activeTaskId);
-    if (task) {
-      onTimerComplete(task, preset);
+    if (sessionType === 'work') {
+      // Log the completed focus session against its task, same as before.
+      const task = tasks.find(t => t._id === activeTaskId);
+      if (task) {
+        onTimerComplete(task, preset);
+      } else {
+        onTimerComplete({ _id: '', title: 'General Focus Session', status: 'todo' }, preset);
+      }
+      incrementTodayCount();
+
+      // Standard Pomodoro cadence: short break after each session, a longer
+      // break after every 4th. Auto-continuing into the break removes a step
+      // of friction (research consistently flags this as the #1 expected
+      // behavior); the following work session still requires a manual start
+      // so there's a natural checkpoint to pick the next task.
+      const nextCycleCount = pomodorosInCycle + 1;
+      const isLongBreak = nextCycleCount >= CYCLES_BEFORE_LONG_BREAK;
+      const breakMins = isLongBreak ? LONG_BREAK_MINS : SHORT_BREAK_MINS;
+
+      setPomodorosInCycle(isLongBreak ? 0 : nextCycleCount);
+      setSessionType(isLongBreak ? 'longBreak' : 'shortBreak');
+      setTimeLeft(breakMins * 60);
+      notify(
+        'Focus Session Complete! 🎯',
+        `${task ? `Finished: ${task.title}. ` : ''}Starting your ${breakMins}-minute ${isLongBreak ? 'long' : ''} break.`.trim()
+      );
+
+      // isRunning is already true (the timer just ran out while active) —
+      // setIsRunning(true) again would be a no-op and the effect that
+      // recalculates endTimeRef only re-runs when isRunning *changes*, so
+      // auto-continuing requires writing the new end time directly. The
+      // running interval reads this ref fresh on every tick.
+      endTimeRef.current = Date.now() + breakMins * 60 * 1000;
     } else {
-      // General focus log callback
-      onTimerComplete({ _id: '', title: 'General Focus Session', status: 'todo' }, preset);
+      // Break finished — back to work, but wait for the user to press play
+      // so there's a moment to pick the next task.
+      setIsRunning(false);
+      setSessionType('work');
+      setTimeLeft(preset * 60);
+      notify('Break Over ☕', 'Ready for your next focus session?');
     }
-    
-    // Reset timer
-    setTimeLeft(preset * 60);
   };
 
   const handleTogglePlay = () => {
     setIsRunning(!isRunning);
   };
 
+  const phaseDurationSecs = () => {
+    if (sessionType === 'shortBreak') return SHORT_BREAK_MINS * 60;
+    if (sessionType === 'longBreak') return LONG_BREAK_MINS * 60;
+    return preset * 60;
+  };
+
   const handleReset = () => {
     setIsRunning(false);
+    setTimeLeft(phaseDurationSecs());
+    stopAudio();
+    setSound('off');
+  };
+
+  const handleSkipBreak = () => {
+    setIsRunning(false);
+    setSessionType('work');
     setTimeLeft(preset * 60);
     stopAudio();
     setSound('off');
@@ -411,6 +481,23 @@ export const PomodoroTimer: React.FC<PomodoroTimerProps> = ({ tasks, onTimerComp
     return `${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`;
   };
 
+  const phaseLabel = sessionType === 'work' ? 'Focus Session' : sessionType === 'shortBreak' ? 'Short Break' : 'Long Break';
+  const phaseColorClass =
+    sessionType === 'work' ? 'text-indigo-400 bg-indigo-500/10 border-indigo-500/20' :
+    sessionType === 'shortBreak' ? 'text-emerald-400 bg-emerald-500/10 border-emerald-500/20' :
+    'text-sky-400 bg-sky-500/10 border-sky-500/20';
+
+  const CycleDots: React.FC<{ size?: string }> = ({ size = 'w-2 h-2' }) => (
+    <div className="flex items-center gap-1.5" title={`${pomodorosInCycle}/${CYCLES_BEFORE_LONG_BREAK} focus sessions this cycle`}>
+      {Array.from({ length: CYCLES_BEFORE_LONG_BREAK }).map((_, i) => (
+        <div
+          key={i}
+          className={`${size} rounded-full transition-colors ${i < pomodorosInCycle ? 'bg-indigo-500' : 'bg-neutral-700'}`}
+        />
+      ))}
+    </div>
+  );
+
   return (
     <div className="glass-panel rounded-xl p-5 shadow-xl relative overflow-hidden flex flex-col items-center text-center space-y-4">
       {/* Small sparkles header */}
@@ -419,13 +506,26 @@ export const PomodoroTimer: React.FC<PomodoroTimerProps> = ({ tasks, onTimerComp
           <Sparkles className="w-3.5 h-3.5 animate-pulse" />
           <span>Focus Pomodoro</span>
         </div>
-        <button
-          onClick={() => setFocusMode(true)}
-          className="text-neutral-500 hover:text-neutral-300 p-1 rounded-md cursor-pointer hover:bg-neutral-800 transition-colors"
-          title="Enter Full Screen Focus Mode"
-        >
-          <Maximize2 className="w-3.5 h-3.5" />
-        </button>
+        <div className="flex items-center gap-2">
+          <span className="text-[10px] text-neutral-500 font-bold" title="Focus sessions completed today">
+            Today: {todayCount} 🍅
+          </span>
+          <button
+            onClick={() => setFocusMode(true)}
+            className="text-neutral-500 hover:text-neutral-300 p-1 rounded-md cursor-pointer hover:bg-neutral-800 transition-colors"
+            title="Enter Full Screen Focus Mode"
+          >
+            <Maximize2 className="w-3.5 h-3.5" />
+          </button>
+        </div>
+      </div>
+
+      {/* Phase badge + cycle progress */}
+      <div className="flex items-center justify-between w-full">
+        <span className={`text-[10px] font-bold uppercase tracking-wider px-2.5 py-1 rounded-full border ${phaseColorClass}`}>
+          {phaseLabel}
+        </span>
+        <CycleDots />
       </div>
 
       {/* Preset select */}
@@ -433,7 +533,7 @@ export const PomodoroTimer: React.FC<PomodoroTimerProps> = ({ tasks, onTimerComp
         <button
           onClick={() => applyPreset(25)}
           className={`px-3 py-1 text-[10px] font-bold rounded cursor-pointer transition-all ${
-            preset === 25 ? 'bg-indigo-600 text-white' : 'text-neutral-400 hover:text-neutral-200'
+            preset === 25 && sessionType === 'work' ? 'bg-indigo-600 text-white' : 'text-neutral-400 hover:text-neutral-200'
           }`}
         >
           25 Mins
@@ -441,7 +541,7 @@ export const PomodoroTimer: React.FC<PomodoroTimerProps> = ({ tasks, onTimerComp
         <button
           onClick={() => applyPreset(50)}
           className={`px-3 py-1 text-[10px] font-bold rounded cursor-pointer transition-all ${
-            preset === 50 ? 'bg-indigo-600 text-white' : 'text-neutral-400 hover:text-neutral-200'
+            preset === 50 && sessionType === 'work' ? 'bg-indigo-600 text-white' : 'text-neutral-400 hover:text-neutral-200'
           }`}
         >
           50 Mins
@@ -452,6 +552,15 @@ export const PomodoroTimer: React.FC<PomodoroTimerProps> = ({ tasks, onTimerComp
       <div className="text-4xl font-black text-neutral-100 font-mono tracking-tight select-none">
         {formatTime(timeLeft)}
       </div>
+
+      {sessionType !== 'work' && (
+        <button
+          onClick={handleSkipBreak}
+          className="text-[10px] font-bold text-neutral-500 hover:text-neutral-300 underline cursor-pointer -mt-2"
+        >
+          Skip break, start focusing
+        </button>
+      )}
 
       {/* Task selector */}
       <div className="w-full">
@@ -524,16 +633,26 @@ export const PomodoroTimer: React.FC<PomodoroTimerProps> = ({ tasks, onTimerComp
             <Minimize2 className="w-5 h-5" />
           </button>
 
-          {/* Sparkles active indicator */}
-          <div className="flex items-center gap-1.5 text-[10px] text-indigo-400 font-bold uppercase tracking-widest animate-pulse mb-6">
-            <Sparkles className="w-4 h-4" />
-            <span>Deep Focus Active</span>
+          {/* Phase badge + cycle progress */}
+          <div className={`flex items-center gap-2 text-[10px] font-bold uppercase tracking-widest mb-4 px-3 py-1.5 rounded-full border ${phaseColorClass}`}>
+            <Sparkles className="w-3.5 h-3.5 animate-pulse" />
+            <span>{phaseLabel}</span>
           </div>
+          <CycleDots size="w-2.5 h-2.5" />
 
           {/* Large Countdown */}
           <div className="text-8xl font-black text-neutral-100 font-mono tracking-tight my-4">
             {formatTime(timeLeft)}
           </div>
+
+          {sessionType !== 'work' && (
+            <button
+              onClick={handleSkipBreak}
+              className="text-xs font-bold text-neutral-500 hover:text-neutral-300 underline cursor-pointer -mt-2 mb-4"
+            >
+              Skip break, start focusing
+            </button>
+          )}
 
           {/* Active Goal */}
           <div className="max-w-md mt-2 mb-8">

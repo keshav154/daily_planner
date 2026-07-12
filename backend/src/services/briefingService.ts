@@ -69,10 +69,11 @@ export async function buildDailyBriefing(userId: string): Promise<DailyBriefing>
   const activeTasks = tasks.filter(t => t.status !== 'done' && t.status !== 'skipped');
   const highPriorityTasks = activeTasks.filter(t => t.priority === 'high');
 
-  // "While you were away" digest: what the autonomous agent did in the last
-  // 24h and what's still waiting on the user.
-  const twentyFourHoursAgo = new Date(Date.now() - 24 * 60 * 60 * 1000);
-  const recentRuns = await AgentRun.find({ userId, createdAt: { $gte: twentyFourHoursAgo } })
+  // "While you were away" digest: news (what happened) is scoped to *today*,
+  // not a rolling 24h window — a rolling window means opening the briefing
+  // twice in the same day re-reports yesterday evening's actions as if they
+  // just happened, since they're still within the trailing 24 hours.
+  const recentRuns = await AgentRun.find({ userId, createdAt: { $gte: startOfDay } })
     .sort({ createdAt: -1 })
     .limit(30);
 
@@ -80,16 +81,25 @@ export async function buildDailyBriefing(userId: string): Promise<DailyBriefing>
     .flatMap(r => r.executedActions || [])
     .filter(a => a && !a.startsWith('[') && !a.startsWith('{') && !a.startsWith('Skipped') && a !== 'No matching tasks.')
     .slice(0, 8);
-  const pendingSuggestionsCount = recentRuns.reduce(
-    (acc, r) => acc + r.actionsTaken.filter(a => a.status === 'pending').length,
-    0
-  );
   const newInsightsCount = await AgentMemory.countDocuments({
     userId,
-    createdAt: { $gte: twentyFourHoursAgo },
+    createdAt: { $gte: startOfDay },
     feedback: 'none',
     source: { $in: ['reflection', 'autonomous', 'consolidation'] }
   });
+
+  // Pending suggestions are a *backlog* count (how many things are currently
+  // awaiting review), not news — scoping this to today only would under-report
+  // older still-unreviewed suggestions. Bounded to 90 days for query sanity,
+  // not as a "since when" cutoff.
+  const ninetyDaysAgo = new Date(Date.now() - 90 * 24 * 60 * 60 * 1000);
+  const runsWithPending = await AgentRun.find({ userId, createdAt: { $gte: ninetyDaysAgo }, 'actionsTaken.status': 'pending' })
+    .select('actionsTaken')
+    .lean();
+  const pendingSuggestionsCount = runsWithPending.reduce(
+    (acc, r) => acc + r.actionsTaken.filter(a => a.status === 'pending').length,
+    0
+  );
 
   const nvidiaKey = process.env.NVIDIA_API_KEY;
   const isNvidiaActive = nvidiaKey && nvidiaKey !== 'your_nvidia_api_key_here';

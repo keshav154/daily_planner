@@ -4,6 +4,7 @@ import { User, Task, Log, AgentMemory, AgentRun, ITask, ILog, IAgentMemory } fro
 import { queryNvidiaNim } from '../config/nvidia';
 import { getRelevantMemories, getPatternMemories, getUserRules, findSimilarMemory } from '../services/similarity';
 import { computeTaskHistoryStats, formatStatsDigest } from '../services/taskHistory';
+import { filterDuplicateSuggestions } from '../services/suggestionDedupe';
 
 // Instantiate Anthropic Client
 const getAnthropicClient = (): Anthropic | null => {
@@ -269,6 +270,7 @@ Return ONLY a valid JSON object matching the original schema. No explanations, n
     const refinedText = await askLLM(refinementPrompt, systemPrompt, isNvidiaActive, client);
 
     const planOutput = parseAiJson<any>(refinedText);
+    planOutput.suggestions = await filterDuplicateSuggestions(userId, planOutput.suggestions || []);
 
     // Save this agent run
     const agentRun = new AgentRun({
@@ -358,9 +360,10 @@ const runMockPlanning = async (userId: string, trigger: string, context: any) =>
     }
   });
 
+  const dedupedSuggestions = await filterDuplicateSuggestions(userId, suggestions);
   const planOutput = {
     rationale: 'Generated rule-based local suggestions based on task priority weights and estimated duration thresholds.',
-    suggestions
+    suggestions: dedupedSuggestions
   };
 
   const agentRun = new AgentRun({
@@ -368,7 +371,7 @@ const runMockPlanning = async (userId: string, trigger: string, context: any) =>
     trigger,
     contextSnapshot: context,
     planOutput,
-    actionsTaken: suggestions.map(s => ({
+    actionsTaken: dedupedSuggestions.map(s => ({
       suggestionId: s.id,
       actionType: s.actionType,
       status: 'pending'

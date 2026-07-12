@@ -8,6 +8,11 @@ interface BriefingDigest {
   newInsightsCount: number;
 }
 
+// Strips trailing "(id: 507f1f...)" from action text — useful in the raw
+// activity log, but a MongoDB ObjectId doesn't belong in a friendly morning
+// greeting.
+const stripTechnicalId = (text: string): string => text.replace(/\s*\(id:\s*[a-f0-9]+\)\s*$/i, '');
+
 export const DailyBriefingCard: React.FC = () => {
   const [briefing, setBriefing] = useState('');
   const [digest, setDigest] = useState<BriefingDigest | null>(null);
@@ -78,7 +83,7 @@ export const DailyBriefingCard: React.FC = () => {
                   {digest.agentActions.map((action, idx) => (
                     <div key={idx} className="flex items-start gap-1.5 text-[10px] font-bold text-black dark:text-neutral-300">
                       <Zap className="w-3 h-3 mt-0.5 shrink-0 text-emerald-500 dark:text-emerald-400" />
-                      <span>{action}</span>
+                      <span>{stripTechnicalId(action)}</span>
                     </div>
                   ))}
                   {(digest.pendingSuggestionsCount > 0 || digest.newInsightsCount > 0) && (

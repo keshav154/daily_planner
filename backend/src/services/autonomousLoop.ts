@@ -5,6 +5,7 @@ import { getRelevantMemories, getPatternMemories, getUserRules } from './similar
 import { searchSreResources } from './webSearch';
 import { runNimToolLoop, runAnthropicToolLoop, ToolLoopResult } from '../agent/toolLoop';
 import { executeAgentTool } from '../agent/tools';
+import { filterDuplicateSuggestions } from './suggestionDedupe';
 import Anthropic from '@anthropic-ai/sdk';
 import mongoose from 'mongoose';
 
@@ -201,17 +202,20 @@ Review goal timelines, habit streaks, task load, and overdue tasks as described 
       planOutput = { rationale: mockPlan.rationale, suggestions: mockPlan.suggestions };
     }
 
-    // Save pending suggestions to AgentRun so the user can accept/reject them in the dashboard
+    // Save pending suggestions to AgentRun so the user can accept/reject them in
+    // the dashboard — deduped against what's already pending from recent runs,
+    // since the hourly cycle would otherwise re-propose the same thing every hour.
+    const dedupedSuggestions = await filterDuplicateSuggestions(userId, planOutput.suggestions);
     const run = new AgentRun({
       userId,
       trigger,
       contextSnapshot: context,
       planOutput: {
         rationale: planOutput.rationale || `Triggered by ${trigger}`,
-        suggestions: planOutput.suggestions
+        suggestions: dedupedSuggestions
       },
       executedActions: executedLogs,
-      actionsTaken: planOutput.suggestions.map((s: any) => ({
+      actionsTaken: dedupedSuggestions.map((s: any) => ({
         suggestionId: s.id,
         actionType: s.actionType,
         status: 'pending'
@@ -223,7 +227,7 @@ Review goal timelines, habit streaks, task load, and overdue tasks as described 
     // Log to background planner logs
     logToBackgroundLogs(
       'success',
-      `Autonomous cycle run completed for ${user.email}. Executed ${executedLogs.length} actions. Generated ${planOutput.suggestions.length} suggestions.`
+      `Autonomous cycle run completed for ${user.email}. Executed ${executedLogs.length} actions. Generated ${dedupedSuggestions.length} suggestions.`
     );
 
     return {
