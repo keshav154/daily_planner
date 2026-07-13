@@ -82,7 +82,8 @@ export const AGENT_TOOLS: ToolSchema[] = [
           title: { type: 'string' },
           estimatedTime: { type: 'number', description: 'Minutes' },
           priority: { type: 'string', enum: ['high', 'medium', 'low'] },
-          category: { type: 'string' }
+          category: { type: 'string' },
+          goalId: { type: 'string', description: 'If this task is catching up on a specific goal\'s deadline, pass that goal\'s id so a repeat catch-up task isn\'t created for the same goal every time it\'s still behind.' }
         },
         required: ['title']
       }
@@ -345,6 +346,23 @@ export async function executeAgentTool(
         return { result: `Skipped: an open task titled "${existingOpen.title}" already exists (id: ${existingOpen._id.toString()}, status: ${existingOpen.status}).` };
       }
 
+      // Goal-linked catch-up tasks: the LLM re-phrases the title differently
+      // each time it re-detects the same lagging goal ("Catch-up on X" vs
+      // "Catch-up on Learn X" vs ...), which slips past the exact-title check
+      // above and stacks a fresh task for the same goal every day. Tag by
+      // goalId instead and block on that tag while one is still open.
+      const goalTag = args.goalId ? `goal:${args.goalId}` : null;
+      if (goalTag) {
+        const existingForGoal = await Task.findOne({
+          userId,
+          tags: goalTag,
+          status: { $in: ['todo', 'in-progress'] }
+        });
+        if (existingForGoal) {
+          return { result: `Skipped: an open catch-up task for this goal already exists ("${existingForGoal.title}", id: ${existingForGoal._id.toString()}).` };
+        }
+      }
+
       const lastTask = await Task.findOne({ userId }).sort({ order: -1 });
       const nextOrder = lastTask ? lastTask.order + 1 : 0;
       const task = new Task({
@@ -354,6 +372,7 @@ export async function executeAgentTool(
         priority: args.priority || 'medium',
         category: args.category || 'Work',
         dueDate: now,
+        tags: goalTag ? [goalTag] : [],
         source: 'agent-suggested',
         order: nextOrder
       });
@@ -377,11 +396,15 @@ export async function executeAgentTool(
       }
       const lastTask = await Task.findOne({ userId }).sort({ order: -1 });
       let currentOrder = lastTask ? lastTask.order + 1 : 0;
+      // Subtasks should never be born already overdue: if the parent's due
+      // date has already passed (e.g. a stale goal being broken down late),
+      // schedule the new subtasks for today instead of inheriting the past date.
+      const subtaskDueDate = parentTask.dueDate > now ? parentTask.dueDate : now;
       for (const subtaskTitle of args.subtasks) {
         const subTask = new Task({
           userId,
           title: subtaskTitle,
-          dueDate: parentTask.dueDate,
+          dueDate: subtaskDueDate,
           priority: parentTask.priority,
           category: parentTask.category,
           tags: [...parentTask.tags, 'subtask'],
