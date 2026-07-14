@@ -394,6 +394,21 @@ export async function executeAgentTool(
       if (!Array.isArray(args.subtasks) || args.subtasks.length === 0) {
         return { result: 'Error: subtasks array is required and cannot be empty.' };
       }
+
+      // The hourly loop re-detects the same overdue parent every cycle it's
+      // still open — refuse to break it down again while a prior breakdown's
+      // subtasks are still outstanding, or this stacks a fresh duplicate set
+      // (e.g. "Read istio documentation" x2) every time the check re-fires.
+      const parentTag = `subtask-of:${parentTask._id.toString()}`;
+      const existingSubtasks = await Task.find({
+        userId,
+        tags: parentTag,
+        status: { $in: ['todo', 'in-progress'] }
+      });
+      if (existingSubtasks.length > 0) {
+        return { result: `Skipped: "${parentTask.title}" already has ${existingSubtasks.length} open subtasks from a prior breakdown.` };
+      }
+
       const lastTask = await Task.findOne({ userId }).sort({ order: -1 });
       let currentOrder = lastTask ? lastTask.order + 1 : 0;
       // Subtasks should never be born already overdue: if the parent's due
@@ -407,7 +422,7 @@ export async function executeAgentTool(
           dueDate: subtaskDueDate,
           priority: parentTask.priority,
           category: parentTask.category,
-          tags: [...parentTask.tags, 'subtask'],
+          tags: [...parentTask.tags, 'subtask', parentTag],
           source: 'agent-suggested',
           order: currentOrder++
         });

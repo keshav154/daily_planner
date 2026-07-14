@@ -321,12 +321,16 @@ function runMockThinking(context: any): any {
 
   if (isOffice && totalEstimated > 240) {
     const lowPriorityTasks = overdueTasks.filter((t: any) => t.priority === 'low');
-    suggestions.push({
-      id: 'suggest-office-load-balance',
-      actionType: 'nudge',
-      description: `Office Day Focus Guard: You have ${totalEstimated} minutes of estimated tasks scheduled today. This exceeds your safe 4-hour office capacity (10:30-16:30). Consider rescheduling low-priority items like: ${lowPriorityTasks.map((t: any) => `"${t.title}"`).join(', ') || 'some items'}.`,
+    // Nudges are informational only — accepting/rejecting one is a no-op in
+    // agent.ts, so putting it in the approval queue was pure friction. Write
+    // it straight to nudge memory instead (same dedup/expiry guards as every
+    // other autonomous nudge).
+    directActions.push({
+      actionType: 'create_nudge_memory',
       details: {
-        rescheduleCandidateIds: lowPriorityTasks.map((t: any) => t.id)
+        content: `Office Day Focus Guard: You have ${totalEstimated} minutes of estimated tasks scheduled today. This exceeds your safe 4-hour office capacity (10:30-16:30). Consider rescheduling low-priority items like: ${lowPriorityTasks.map((t: any) => `"${t.title}"`).join(', ') || 'some items'}.`,
+        category: 'workload',
+        importance: 6
       }
     });
   } else if (overdueTasks.length > 5) {
@@ -356,25 +360,23 @@ function runMockThinking(context: any): any {
   }
 
   if (fatigueScore >= 70) {
-    suggestions.push({
-      id: 'suggest-burnout-deload',
-      actionType: 'nudge',
-      description: `Burnout Sentinel Alert (Fatigue Score: ${fatigueScore}/100): High work intensity detected. I recommend deferring low-priority items and taking a mandatory recovery break.`,
+    directActions.push({
+      actionType: 'create_nudge_memory',
       details: {
-        fatigueScore,
-        mitigation: 'Schedule recovery and defer low-priority tasks.'
+        content: `Burnout Sentinel Alert (Fatigue Score: ${fatigueScore}/100): High work intensity detected. I recommend deferring low-priority items and taking a mandatory recovery break.`,
+        category: 'burnout',
+        importance: 8
       }
     });
 
     const lowPriorityTask = overdueTasks.find((t: any) => t.priority === 'low');
     if (lowPriorityTask) {
-      suggestions.push({
-        id: `suggest-reschedule-fatigue-${lowPriorityTask.id}`,
-        actionType: 'nudge',
-        description: `Fatigue Auto-Shedding: Defer non-critical task "${lowPriorityTask.title}" to tomorrow to prevent exhaustion.`,
+      directActions.push({
+        actionType: 'create_nudge_memory',
         details: {
-          taskId: lowPriorityTask.id,
-          suggestedDate: new Date(new Date().getTime() + 24 * 60 * 60 * 1000).toISOString().split('T')[0]
+          content: `Fatigue Auto-Shedding: Defer non-critical task "${lowPriorityTask.title}" to tomorrow to prevent exhaustion.`,
+          category: 'fatigue-shedding',
+          importance: 6
         }
       });
     }
