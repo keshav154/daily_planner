@@ -273,6 +273,19 @@ const CHAT_ONLY_TOOLS: ToolSchema[] = [
 export const CHAT_TOOLS: ToolSchema[] = [...AGENT_TOOLS, ...CHAT_ONLY_TOOLS];
 
 /**
+ * Observe-only tool set for the AUTONOMOUS background loop. The user rejects
+ * the agent's unsolicited task mutations 90-100% of the time (create_task 93%,
+ * break_down 100%, reorder 94%, time_block 93%, nudge 100% — from its own
+ * feedback mining), so the background loop no longer gets those tools at all.
+ * It can read state and record goal notes, but it never creates, breaks down,
+ * reschedules, or reorders tasks on its own — that only happens when the user
+ * explicitly asks via chat/Telegram (which still use the full CHAT_TOOLS).
+ */
+export const OBSERVE_TOOLS: ToolSchema[] = AGENT_TOOLS.filter(t =>
+  ['get_tasks', 'search_memories', 'get_task_history', 'add_goal_note'].includes(t.function.name)
+);
+
+/**
  * Tools that only observe state and change nothing. Their results feed the
  * model's next reasoning step but must NOT be reported as "actions taken" —
  * otherwise digests and activity feeds fill up with raw task-list JSON.
@@ -393,6 +406,18 @@ export async function executeAgentTool(
       if (!parentTask) return { result: `Error: task ${args.taskId} not found.` };
       if (!Array.isArray(args.subtasks) || args.subtasks.length === 0) {
         return { result: 'Error: subtasks array is required and cannot be empty.' };
+      }
+
+      // A subtask is already atomic — breaking it down again just spawns a
+      // near-identical child set ("Read istio documentation" → "Read istio
+      // documentation" → …), which is exactly how the planner filled up with
+      // recursive duplicates. Refuse to break down anything that is itself a
+      // subtask, or a task that has already been broken down once.
+      if (parentTask.tags.includes('subtask')) {
+        return { result: `Skipped: "${parentTask.title}" is already a subtask — it's atomic, no further breakdown.` };
+      }
+      if ((parentTask.description || '').includes('Broken down by autonomous agent')) {
+        return { result: `Skipped: "${parentTask.title}" was already broken down previously.` };
       }
 
       // The hourly loop re-detects the same overdue parent every cycle it's

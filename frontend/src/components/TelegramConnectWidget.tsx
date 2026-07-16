@@ -99,13 +99,16 @@ export const TelegramConnectWidget: React.FC = () => {
 
   return (
     <div className="px-2 space-y-2">
-      <p className="text-[9px] font-bold text-neutral-500 uppercase tracking-wide">Proactive Briefing</p>
+      <p className="text-[9px] font-bold text-neutral-500 uppercase tracking-wide">Chat With Kortex</p>
 
       {status.connected ? (
         <div className="space-y-1.5">
           <div className="flex items-center gap-1.5 text-[10px] text-emerald-400 font-semibold">
             <CheckCircle2 className="w-3.5 h-3.5" /> Telegram Connected
           </div>
+          <p className="text-[9px] text-neutral-500 leading-relaxed">
+            You'll get the morning briefing here — and you can reply to the bot anytime to remember something, add a task, or ask what's on your plate.
+          </p>
           <div className="flex gap-1.5">
             <button
               onClick={handleTest}

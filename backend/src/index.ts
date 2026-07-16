@@ -70,10 +70,13 @@ app.use((err: any, req: express.Request, res: express.Response, next: express.Ne
 });
 
 import { startBackgroundScheduler } from './services/backgroundPlanner';
+import { registerTelegramWebhook } from './services/telegramNotifier';
 
 // Start Server
 app.listen(PORT, () => {
   console.log(`Daily Planner Agent Server running on port ${PORT}`);
   // Start background auto-planner checks
   startBackgroundScheduler();
+  // Register the Telegram inbound webhook (no-ops if not configured)
+  registerTelegramWebhook();
 });

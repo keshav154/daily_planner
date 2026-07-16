@@ -1,8 +1,12 @@
-import { Router, Response } from 'express';
+import { Router, Request, Response } from 'express';
 import { User } from '../models/Schemas';
 import { authenticateToken, AuthRequest } from '../middleware/auth';
-import { sendTelegramMessage, getLatestTelegramChatId, isTelegramConfigured } from '../services/telegramNotifier';
+import { sendTelegramMessage, answerCallbackQuery, getLatestTelegramChatId, isTelegramConfigured } from '../services/telegramNotifier';
 import { buildDailyBriefing } from '../services/briefingService';
+import { processAgentMessage } from '../services/agentChatService';
+import { handleTelegramCallback } from '../services/telegramInteractions';
+import { gradeStudyReply } from '../services/studyDrip';
+import { runHygieneSweep } from '../services/taskHygiene';
 
 const router = Router();
 
@@ -82,6 +86,83 @@ router.post('/telegram/test', authenticateToken, async (req: AuthRequest, res: R
     res.json({ sent: true });
   } catch (error: any) {
     res.status(500).json({ error: error.message || 'Failed to send test message' });
+  }
+});
+
+// POST /api/notifications/telegram/webhook — inbound replies from Telegram.
+// Called by Telegram itself (not the browser), so it's authenticated via the
+// shared secret Telegram echoes back on every request instead of a JWT.
+// This is what turns Telegram from a one-way digest into a real capture
+// channel: replying to the bot runs the exact same reasoning as the chat
+// panel and capture.html (processAgentMessage), one-shot, no history.
+router.post('/telegram/webhook', async (req: Request, res: Response) => {
+  try {
+    const secret = process.env.TELEGRAM_WEBHOOK_SECRET;
+    const incomingSecret = req.headers['x-telegram-bot-api-secret-token'];
+    if (!secret || incomingSecret !== secret) {
+      return res.status(401).json({ error: 'Invalid webhook secret' });
+    }
+
+    // Button taps arrive as callback_query updates, not messages. Handle those
+    // first: run the mapped action, acknowledge the tap, and confirm.
+    const callback = req.body?.callback_query;
+    if (callback) {
+      const cbChatId = callback.message?.chat?.id;
+      const cbUser = cbChatId ? await User.findOne({ telegramChatId: String(cbChatId) }) : null;
+      if (cbUser) {
+        const confirmation = await handleTelegramCallback(cbUser._id.toString(), String(callback.data || ''));
+        await answerCallbackQuery(callback.id, confirmation);
+        await sendTelegramMessage(String(cbChatId), confirmation);
+      } else {
+        await answerCallbackQuery(callback.id);
+      }
+      return res.status(200).json({ ok: true });
+    }
+
+    const chatId = req.body?.message?.chat?.id;
+    const text = req.body?.message?.text;
+    if (!chatId || !text) {
+      // Non-text update (photo, edited message, sticker, etc.) — nothing to do.
+      return res.status(200).json({ ok: true });
+    }
+
+    const user = await User.findOne({ telegramChatId: String(chatId) });
+    if (!user) {
+      await sendTelegramMessage(String(chatId), 'This chat isn\'t connected to a Kortex account yet — open the app and connect Telegram from the sidebar first.');
+      return res.status(200).json({ ok: true });
+    }
+
+    const userIdStr = user._id.toString();
+
+    // If a daily study question is open, this reply is the answer — grade it
+    // instead of treating it as a generic capture.
+    const grading = await gradeStudyReply(userIdStr, text);
+    if (grading) {
+      await sendTelegramMessage(String(chatId), grading);
+      return res.status(200).json({ ok: true });
+    }
+
+    // On-demand hygiene sweep via a short command word.
+    if (/^(cleanup|clean up|hygiene|tidy)\b/i.test(text.trim())) {
+      const swept = await runHygieneSweep(userIdStr, String(chatId));
+      if (!swept) {
+        await sendTelegramMessage(String(chatId), '🧹 Nothing looks stale right now — your task list is clean.');
+      }
+      return res.status(200).json({ ok: true });
+    }
+
+    const result = await processAgentMessage(userIdStr, text, [], 'telegram');
+    let replyText = result.response;
+    if (result.suggestions.length > 0) {
+      replyText += `\n\n(${result.suggestions.length} suggestion${result.suggestions.length > 1 ? 's' : ''} saved for review in the app)`;
+    }
+    await sendTelegramMessage(String(chatId), replyText);
+
+    res.status(200).json({ ok: true });
+  } catch (error: any) {
+    console.error('[Telegram] Webhook handling failed:', error);
+    // Always 200 so Telegram doesn't retry-storm a message that already failed once.
+    res.status(200).json({ ok: true });
   }
 });
 

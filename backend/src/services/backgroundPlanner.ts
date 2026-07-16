@@ -1,10 +1,14 @@
-import { User } from '../models/Schemas';
+import { User, Task } from '../models/Schemas';
 import { runPlanningLoop, runReflectionLoop } from '../agent/loop';
 import { runAutonomousAgentLoop } from './autonomousLoop';
 import { consolidateMemories } from './memoryConsolidation';
 import { runWeeklyMetaReflection } from './weeklyReflection';
 import { buildDailyBriefing } from './briefingService';
 import { sendTelegramMessage } from './telegramNotifier';
+import { buildTaskActionButtons } from './telegramInteractions';
+import { runEveningRitual } from './eveningRitual';
+import { runStudyDripForUser } from './studyDrip';
+import { runHygieneSweep } from './taskHygiene';
 
 export interface BackgroundLogEntry {
   timestamp: Date;
@@ -97,7 +101,30 @@ export const runAutonomousChecks = async () => {
       ) {
         try {
           const { briefing } = await buildDailyBriefing(userId);
-          const sent = await sendTelegramMessage(user.telegramChatId, `🧠 Kortex Morning Briefing\n\n${briefing}`);
+
+          // Attach Done/Defer buttons for today's top few tasks so the user can
+          // clear them straight from the digest — high priority first, then
+          // soonest due. This is what makes the morning message actionable
+          // instead of just informational.
+          const candidateTasks = await Task.find({
+            userId,
+            status: { $in: ['todo', 'in-progress'] },
+            dueDate: { $lte: new Date(new Date().setHours(23, 59, 59, 999)) }
+          }).sort({ dueDate: 1 });
+          const priorityWeight: Record<string, number> = { high: 0, medium: 1, low: 2 };
+          const topTasks = candidateTasks
+            .sort((a, b) => (priorityWeight[a.priority] ?? 1) - (priorityWeight[b.priority] ?? 1))
+            .slice(0, 3);
+          const buttons = topTasks.length > 0 ? buildTaskActionButtons(topTasks) : undefined;
+          const taskLines = topTasks.length > 0
+            ? '\n\nTop focus today:\n' + topTasks.map((t, i) => `${i + 1}. ${t.title}`).join('\n')
+            : '';
+
+          const sent = await sendTelegramMessage(
+            user.telegramChatId,
+            `🧠 Kortex Morning Briefing\n\n${briefing}${taskLines}`,
+            buttons
+          );
           if (sent) {
             user.agentState = { ...user.agentState, lastTelegramDigestDate: userDateStr };
             await user.save();
@@ -105,6 +132,62 @@ export const runAutonomousChecks = async () => {
           }
         } catch (telegramErr: any) {
           log('warn', `Failed to send Telegram briefing to ${user.email}: ${telegramErr.message}`);
+        }
+      }
+
+      // 2c. Daily study drip: one cert/learning question pushed to Telegram,
+      // once per calendar day, within the same daytime catch-up window as the
+      // briefing. Turns stalled cert goals into a daily habit.
+      if (
+        inCatchUpWindow &&
+        user.telegramChatId &&
+        agentState.lastStudyDripDate !== userDateStr
+      ) {
+        try {
+          const dripped = await runStudyDripForUser(userId, user.telegramChatId);
+          // Mark the date regardless of whether a question was sent (no learning
+          // goal, or one already open) so we don't retry every hour all day.
+          user.agentState = { ...user.agentState, lastStudyDripDate: userDateStr };
+          await user.save();
+          if (dripped) log('success', `Study drip sent to ${user.email}.`);
+        } catch (dripErr: any) {
+          log('warn', `Failed to send study drip to ${user.email}: ${dripErr.message}`);
+        }
+      }
+
+      // 2d. Weekly task-hygiene sweep: flag stale/duplicate tasks to Telegram
+      // at most once every 7 days, in the daytime window.
+      if (inCatchUpWindow && user.telegramChatId) {
+        const lastSweep = agentState.lastHygieneSweepDate;
+        const daysSinceSweep = lastSweep
+          ? (new Date(userDateStr).getTime() - new Date(lastSweep).getTime()) / (1000 * 60 * 60 * 24)
+          : Infinity;
+        if (daysSinceSweep >= 7) {
+          try {
+            const swept = await runHygieneSweep(userId, user.telegramChatId);
+            user.agentState = { ...user.agentState, lastHygieneSweepDate: userDateStr };
+            await user.save();
+            if (swept) log('success', `Task hygiene sweep sent to ${user.email}.`);
+          } catch (sweepErr: any) {
+            log('warn', `Failed to run hygiene sweep for ${user.email}: ${sweepErr.message}`);
+          }
+        }
+      }
+
+      // 2e. Evening shutdown ritual: once per calendar day, from 9 PM user
+      // local time onward (sits just before the 10 PM nightly reflector).
+      if (
+        userHour >= 21 &&
+        user.telegramChatId &&
+        agentState.lastEveningRitualDate !== userDateStr
+      ) {
+        try {
+          const sent = await runEveningRitual(userId, user.telegramChatId);
+          user.agentState = { ...user.agentState, lastEveningRitualDate: userDateStr };
+          await user.save();
+          if (sent) log('success', `Evening ritual sent to ${user.email}.`);
+        } catch (ritualErr: any) {
+          log('warn', `Failed to send evening ritual to ${user.email}: ${ritualErr.message}`);
         }
       }
 

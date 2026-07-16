@@ -25,6 +25,9 @@ export interface IUser extends Document {
     lastReflectionDate?: string;    // YYYY-MM-DD in user's local timezone
     lastWeeklyReflectionDate?: string; // YYYY-MM-DD in user's local timezone
     lastTelegramDigestDate?: string; // YYYY-MM-DD in user's local timezone
+    lastEveningRitualDate?: string;  // YYYY-MM-DD in user's local timezone
+    lastHygieneSweepDate?: string;   // YYYY-MM-DD (weekly cadence) in user's local timezone
+    lastStudyDripDate?: string;      // YYYY-MM-DD in user's local timezone
   };
   createdAt: Date;
   updatedAt: Date;
@@ -52,7 +55,10 @@ const UserSchema = new Schema<IUser>({
     lastMorningPlanDate: { type: String },
     lastReflectionDate: { type: String },
     lastWeeklyReflectionDate: { type: String },
-    lastTelegramDigestDate: { type: String }
+    lastTelegramDigestDate: { type: String },
+    lastEveningRitualDate: { type: String },
+    lastHygieneSweepDate: { type: String },
+    lastStudyDripDate: { type: String }
   }
 }, { timestamps: true });
 

@@ -208,12 +208,21 @@ router.post('/reflect', authenticateToken, async (req: AuthRequest, res: Respons
   }
 });
 
+// Machine-internal memory categories: the agent uses these for its own
+// reasoning (feedback rates, estimation calibration factors), but they read as
+// jargon to a human ("Estimation Bias factor 0.83", "Suggestion Feedback
+// Pattern for create_task"), so they're hidden from the user-facing list while
+// staying in the DB for getPatternMemories to consume.
+const INTERNAL_MEMORY_CATEGORIES = ['Suggestion Feedback Pattern', 'Estimation Bias'];
+
 // Get user memories / insights (excluding expired transient nudges, which are
-// only meaningful while live and clutter the review queue afterwards)
+// only meaningful while live and clutter the review queue afterwards, and
+// internal machine-telemetry categories that aren't human-readable insights)
 router.get('/memories', authenticateToken, async (req: AuthRequest, res: Response) => {
   try {
     const memories = await AgentMemory.find({
       userId: req.userId,
+      category: { $nin: INTERNAL_MEMORY_CATEGORIES },
       $or: [
         { expiresAt: { $exists: false } },
         { expiresAt: { $gt: new Date() } }

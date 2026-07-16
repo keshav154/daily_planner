@@ -4,7 +4,7 @@ import Habit from '../models/Habit';
 import { getRelevantMemories, getPatternMemories, getUserRules } from './similarity';
 import { searchSreResources } from './webSearch';
 import { runNimToolLoop, runAnthropicToolLoop, ToolLoopResult } from '../agent/toolLoop';
-import { executeAgentTool } from '../agent/tools';
+import { executeAgentTool, OBSERVE_TOOLS } from '../agent/tools';
 import { filterDuplicateSuggestions } from './suggestionDedupe';
 import Anthropic from '@anthropic-ai/sdk';
 import mongoose from 'mongoose';
@@ -145,19 +145,17 @@ ${searchResult.content}`;
     // The model calls tools (get_tasks, create_task, schedule_time_block, break_down_task,
     // defer_task, create_nudge_memory, add_goal_note, search_memories, propose_reorder),
     // sees each result, and can decide on further actions before concluding.
-    const systemPrompt = `You are Kortex Cognitive Brain, an autonomous agent managing a user's second brain.
-You run in a Think-Act-Observe loop using tools to inspect and adjust the user's daily planner, habits, and goals.
+    const systemPrompt = `You are Kortex Cognitive Brain, a quiet background observer of the user's second brain.
+You run periodically to UNDERSTAND the user's planner, habits, and goals — not to rearrange them.
 
-Guidance:
-1. Goal timelines: If a deadline is approaching (<=4 days) but progress is low (<70%), call add_goal_note to log a warning and create_task for a catch-up task, passing that goal's id as goalId (this stops a fresh catch-up task from being created for the same goal every time this check re-runs while one is still open).
-2. Habit streaks: If a habit is at risk (streak active but not completed today), call create_nudge_memory to warn the user before midnight.
-3. Task load & Calendar Load-Balancing: If the user is in "office" workMode (6-hour capacity), and total estimated task time exceeds 4 hours, call defer_task on low-priority items or propose_reorder to prioritize.
-4. Overdue tasks: Use break_down_task or schedule_time_block to make overdue todo items actionable.
-5. Past memories: Use search_memories if you need more context before acting, and never contradict an accepted user preference.
-6. Ground your reasoning in history: before proposing schedule or workload changes, call get_task_history and justify the change with the user's actual track record (completion rates, estimation accuracy, peak focus hours) — not generic productivity advice.
+IMPORTANT — you are in observe-only mode. You do NOT create tasks, break tasks down, reschedule, reorder, or send nudges on your own. The user has consistently rejected unsolicited changes, so those actions only happen when they explicitly ask via chat. Your job is to notice what matters and, at most, record a concise note on a goal.
 
-Only call tools when there is a genuine, specific issue to address — do not act just to act. Small, safe, reversible changes (create_task, schedule_time_block, break_down_task, defer_task, create_nudge_memory, add_goal_note) should be executed directly via tool calls. Anything that reshuffles the whole day (propose_reorder) is queued for human approval instead of applied immediately.
-When you are done taking actions, respond with a final short text message summarizing your rationale (no further tool calls).`;
+What to do:
+1. Use get_tasks, get_task_history, and search_memories to understand the current state and the user's real track record (completion rates, estimation accuracy, peak focus hours).
+2. Only if there is a genuinely important, specific, and NEW observation about a goal (e.g. a deadline is close and progress is stalled), call add_goal_note ONCE to record it — do not repeat notes you've already made.
+3. Never contradict an accepted user preference.
+
+Most cycles, the right action is to take NO action — just observe. Do not act to look busy. When done, respond with a one-sentence summary of what you observed (no further tool calls).`;
 
     const userPrompt = `Here is the current workspace snapshot:
 ${JSON.stringify(context, null, 2)}
@@ -174,7 +172,7 @@ Review goal timelines, habit streaks, task load, and overdue tasks as described 
 
     if (isNvidiaActive) {
       try {
-        loopResult = await runNimToolLoop(systemPrompt, userPrompt, toolCtx);
+        loopResult = await runNimToolLoop(systemPrompt, userPrompt, toolCtx, { tools: OBSERVE_TOOLS });
       } catch (err) {
         console.error('[Autonomous Loop] NIM tool loop failed, attempting Anthropic fallback:', err);
       }
@@ -183,7 +181,7 @@ Review goal timelines, habit streaks, task load, and overdue tasks as described 
     if (!loopResult && isAnthropicActive) {
       try {
         const anthropic = new Anthropic({ apiKey: anthropicKey });
-        loopResult = await runAnthropicToolLoop(anthropic, systemPrompt, userPrompt, toolCtx);
+        loopResult = await runAnthropicToolLoop(anthropic, systemPrompt, userPrompt, toolCtx, { tools: OBSERVE_TOOLS });
       } catch (err) {
         console.error('[Autonomous Loop] Anthropic tool loop failed:', err);
       }
@@ -268,13 +266,16 @@ async function executeMockDirectActions(userId: string, now: Date, directActions
   return executedLogs;
 }
 
-// Fallback rule-based thinking generator (deterministic checks)
+// Fallback rule-based observer (used when no LLM is active). Observe-only:
+// it records at most a single goal note for a genuinely stalled deadline and
+// proposes NO task mutations — the user rejected the old catch-up/reorder/
+// nudge/recovery suggestions 90-100% of the time, so they're gone.
 function runMockThinking(context: any): any {
-  const suggestions: any[] = [];
   const directActions: any[] = [];
   const now = new Date();
 
-  // 1. Goal timeline warnings
+  // Only observation worth recording autonomously: a near deadline with
+  // stalled progress. One note per such goal; downstream dedup stops repeats.
   for (const g of context.goals) {
     if (g.deadline) {
       const deadlineDate = new Date(g.deadline);
@@ -284,122 +285,16 @@ function runMockThinking(context: any): any {
           actionType: 'add_agent_note',
           details: {
             goalId: g.id,
-            note: `Deadline in ${Math.round(daysLeft)} days, but goal progress is only ${g.progress}%. Plan execution immediately.`
-          }
-        });
-        suggestions.push({
-          id: `suggest-catchup-goal-${g.id}`,
-          actionType: 'create_task',
-          description: `Create catch-up task to advance milestones for goal: "${g.title}"`,
-          details: {
-            title: `Goal Catch-up: ${g.title}`,
-            estimatedTime: 60
+            note: `Deadline in ${Math.round(daysLeft)} days with progress at ${g.progress}%.`
           }
         });
       }
-    }
-  }
-
-  // 2. Habit streak warnings
-  for (const h of context.habits) {
-    if (h.atRisk) {
-      directActions.push({
-        actionType: 'create_nudge_memory',
-        details: {
-          content: `Your daily habit streak of ${h.streak} for "${h.title}" is at risk! Finish it before midnight.`,
-          category: 'productivity',
-          importance: 7
-        }
-      });
-    }
-  }
-
-  // 3. Overdue task suggestions & Calendar Load-Balancer
-  const overdueTasks = context.tasks.filter((t: any) => t.status !== 'done' && t.status !== 'skipped');
-  const totalEstimated = overdueTasks.reduce((sum: number, t: any) => sum + (t.estimatedTime || 0), 0);
-  const isOffice = context.user.preferences?.workMode === 'office';
-
-  if (isOffice && totalEstimated > 240) {
-    const lowPriorityTasks = overdueTasks.filter((t: any) => t.priority === 'low');
-    // Nudges are informational only — accepting/rejecting one is a no-op in
-    // agent.ts, so putting it in the approval queue was pure friction. Write
-    // it straight to nudge memory instead (same dedup/expiry guards as every
-    // other autonomous nudge).
-    directActions.push({
-      actionType: 'create_nudge_memory',
-      details: {
-        content: `Office Day Focus Guard: You have ${totalEstimated} minutes of estimated tasks scheduled today. This exceeds your safe 4-hour office capacity (10:30-16:30). Consider rescheduling low-priority items like: ${lowPriorityTasks.map((t: any) => `"${t.title}"`).join(', ') || 'some items'}.`,
-        category: 'workload',
-        importance: 6
-      }
-    });
-  } else if (overdueTasks.length > 5) {
-    suggestions.push({
-      id: 'suggest-reschedule-overload',
-      actionType: 'reorder',
-      description: 'You have too many tasks. Reorder to prioritize top 3 items today.',
-      details: {
-        orderedTaskIds: overdueTasks.slice(0, 3).map((t: any) => t.id)
-      }
-    });
-  }
-
-  // 4. Fatigue Sentinel & Auto-Shedder
-  let fatigueScore = 0;
-  const recentLogsDuration = context.logs.reduce((sum: number, l: any) => sum + (l.duration || 0), 0);
-  if (recentLogsDuration > 300) fatigueScore += 40;
-  else if (recentLogsDuration > 180) fatigueScore += 20;
-
-  const activeOverdueCount = overdueTasks.length;
-  if (activeOverdueCount > 6) fatigueScore += 30;
-  else if (activeOverdueCount > 3) fatigueScore += 15;
-
-  const currentHour = now.getHours();
-  if (currentHour >= 21 || currentHour < 5) {
-    fatigueScore += 30;
-  }
-
-  if (fatigueScore >= 70) {
-    directActions.push({
-      actionType: 'create_nudge_memory',
-      details: {
-        content: `Burnout Sentinel Alert (Fatigue Score: ${fatigueScore}/100): High work intensity detected. I recommend deferring low-priority items and taking a mandatory recovery break.`,
-        category: 'burnout',
-        importance: 8
-      }
-    });
-
-    const lowPriorityTask = overdueTasks.find((t: any) => t.priority === 'low');
-    if (lowPriorityTask) {
-      directActions.push({
-        actionType: 'create_nudge_memory',
-        details: {
-          content: `Fatigue Auto-Shedding: Defer non-critical task "${lowPriorityTask.title}" to tomorrow to prevent exhaustion.`,
-          category: 'fatigue-shedding',
-          importance: 6
-        }
-      });
-    }
-
-    const hasRecoveryTask = context.tasks.some((t: any) => t.title.toLowerCase().includes('recovery') || t.title.toLowerCase().includes('rest session'));
-    if (!hasRecoveryTask) {
-      suggestions.push({
-        id: 'suggest-recovery-break',
-        actionType: 'create_task',
-        description: 'Create a mandatory 60-minute Focus Recovery & Recharge session.',
-        details: {
-          title: '🔋 Focus Recovery & Rest Session',
-          estimatedTime: 60,
-          category: 'Health',
-          priority: 'high'
-        }
-      });
     }
   }
 
   return {
-    rationale: `Offline rule-based checks evaluated goal deadlines, habit risks, task capacity, and computed a Fatigue Score of ${fatigueScore}/100.`,
-    suggestions,
+    rationale: 'Observed goal timelines; no autonomous task changes (observe-only mode).',
+    suggestions: [],
     directActions
   };
 }

@@ -18,11 +18,27 @@ export function isTelegramConfigured(): boolean {
 }
 
 /**
- * Sends a plain-text message to a specific chat. Returns false (rather than
- * throwing) on failure so a notification hiccup never breaks the calling
- * background cycle.
+ * A single tappable inline button. `callback_data` is echoed back to our
+ * webhook as a callback_query when the user taps it — Telegram caps it at
+ * 64 bytes, so we keep it to short "verb:id" strings (e.g. "done:<taskId>").
  */
-export async function sendTelegramMessage(chatId: string, text: string): Promise<boolean> {
+export interface TelegramButton {
+  text: string;
+  callback_data: string;
+}
+
+/**
+ * Sends a message to a specific chat. Returns false (rather than throwing) on
+ * failure so a notification hiccup never breaks the calling background cycle.
+ * Pass `buttons` (rows of tappable buttons) to attach an inline keyboard —
+ * this is what turns a one-way digest into something you can act on from the
+ * chat itself (complete a task, roll it forward, clean up the backlog).
+ */
+export async function sendTelegramMessage(
+  chatId: string,
+  text: string,
+  buttons?: TelegramButton[][]
+): Promise<boolean> {
   const token = getBotToken();
   if (!token) {
     console.warn('[Telegram] TELEGRAM_BOT_TOKEN not configured; skipping send.');
@@ -31,10 +47,14 @@ export async function sendTelegramMessage(chatId: string, text: string): Promise
   if (!chatId) return false;
 
   try {
+    const body: any = { chat_id: chatId, text, disable_web_page_preview: true };
+    if (buttons && buttons.length > 0) {
+      body.reply_markup = { inline_keyboard: buttons };
+    }
     const response = await fetch(`${TELEGRAM_API_BASE}/bot${token}/sendMessage`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ chat_id: chatId, text, disable_web_page_preview: true })
+      body: JSON.stringify(body)
     });
 
     if (!response.ok) {
@@ -46,6 +66,68 @@ export async function sendTelegramMessage(chatId: string, text: string): Promise
   } catch (err) {
     console.error('[Telegram] sendMessage request failed:', err);
     return false;
+  }
+}
+
+/**
+ * Acknowledges a button tap so Telegram stops showing the loading spinner on
+ * the button and optionally flashes a short toast to the user. Must be called
+ * within ~seconds of receiving the callback_query or Telegram marks it failed.
+ */
+export async function answerCallbackQuery(callbackQueryId: string, text?: string): Promise<void> {
+  const token = getBotToken();
+  if (!token) return;
+  try {
+    await fetch(`${TELEGRAM_API_BASE}/bot${token}/answerCallbackQuery`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ callback_query_id: callbackQueryId, text: text || '' })
+    });
+  } catch (err) {
+    console.error('[Telegram] answerCallbackQuery failed:', err);
+  }
+}
+
+/**
+ * Registers (or re-registers) the inbound webhook with Telegram so replies
+ * to the bot are POSTed to POST /api/notifications/telegram/webhook instead
+ * of sitting in the getUpdates queue. Safe to call on every server boot —
+ * setWebhook is idempotent, and Render restarts/redeploys this process
+ * often. No-ops (with a log) if the bot token or a public URL isn't
+ * resolvable, e.g. local dev without a tunnel.
+ */
+export async function registerTelegramWebhook(): Promise<void> {
+  const token = getBotToken();
+  if (!token) return;
+
+  const secret = process.env.TELEGRAM_WEBHOOK_SECRET;
+  if (!secret) {
+    console.warn('[Telegram] TELEGRAM_WEBHOOK_SECRET not set; skipping webhook registration (inbound replies will not work).');
+    return;
+  }
+
+  const publicUrl = process.env.RENDER_EXTERNAL_URL || process.env.TELEGRAM_WEBHOOK_URL;
+  if (!publicUrl) {
+    console.warn('[Telegram] No public URL available (RENDER_EXTERNAL_URL/TELEGRAM_WEBHOOK_URL unset); skipping webhook registration.');
+    return;
+  }
+
+  const webhookUrl = `${publicUrl.replace(/\/$/, '')}/api/notifications/telegram/webhook`;
+
+  try {
+    const response = await fetch(`${TELEGRAM_API_BASE}/bot${token}/setWebhook`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ url: webhookUrl, secret_token: secret })
+    });
+    const data: any = await response.json();
+    if (!response.ok || !data.ok) {
+      console.error('[Telegram] setWebhook failed:', data);
+      return;
+    }
+    console.log(`[Telegram] Webhook registered: ${webhookUrl}`);
+  } catch (err) {
+    console.error('[Telegram] setWebhook request failed:', err);
   }
 }
 
