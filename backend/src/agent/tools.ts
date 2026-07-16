@@ -4,6 +4,7 @@ import { Goal } from '../models/Goal';
 import Habit from '../models/Habit';
 import { getRelevantMemories, findSimilarMemory } from '../services/similarity';
 import { computeTaskHistoryStats, formatStatsDigest } from '../services/taskHistory';
+import { searchHistory } from '../services/recall';
 import { ToolSchema } from '../config/nvidia';
 
 export interface ToolContext {
@@ -52,6 +53,21 @@ export const AGENT_TOOLS: ToolSchema[] = [
         properties: {
           query: { type: 'string', description: 'What to search for' },
           limit: { type: 'number', description: 'Max results (default 5)' }
+        },
+        required: ['query']
+      }
+    }
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'search_history',
+      description: 'Recall what the user actually DID in the past. Natural-language search over their work history — completed-task logs, resolution notes, and saved references/insights. Use this whenever the user asks "what did I do about X", "when did I work on Y", "how did I fix Z", or wants details of past work.',
+      parameters: {
+        type: 'object',
+        properties: {
+          query: { type: 'string', description: 'What to recall, e.g. "ECM deployment on cusdemo"' },
+          limit: { type: 'number', description: 'Max results (default 8)' }
         },
         required: ['query']
       }
@@ -282,7 +298,7 @@ export const CHAT_TOOLS: ToolSchema[] = [...AGENT_TOOLS, ...CHAT_ONLY_TOOLS];
  * explicitly asks via chat/Telegram (which still use the full CHAT_TOOLS).
  */
 export const OBSERVE_TOOLS: ToolSchema[] = AGENT_TOOLS.filter(t =>
-  ['get_tasks', 'search_memories', 'get_task_history', 'add_goal_note'].includes(t.function.name)
+  ['get_tasks', 'search_memories', 'search_history', 'get_task_history', 'add_goal_note'].includes(t.function.name)
 );
 
 /**
@@ -290,7 +306,7 @@ export const OBSERVE_TOOLS: ToolSchema[] = AGENT_TOOLS.filter(t =>
  * model's next reasoning step but must NOT be reported as "actions taken" —
  * otherwise digests and activity feeds fill up with raw task-list JSON.
  */
-export const READ_ONLY_TOOLS = new Set(['get_tasks', 'search_memories', 'get_task_history']);
+export const READ_ONLY_TOOLS = new Set(['get_tasks', 'search_memories', 'search_history', 'get_task_history']);
 
 function summarizeTasks(tasks: any[]): string {
   if (tasks.length === 0) return 'No matching tasks.';
@@ -339,6 +355,17 @@ export async function executeAgentTool(
     case 'search_memories': {
       const memories = await getRelevantMemories(userId, args.query || '', args.limit || 5);
       return { result: JSON.stringify(memories.map((m: any) => m.content)) };
+    }
+
+    case 'search_history': {
+      const hits = await searchHistory(userId, args.query || '', args.limit || 8);
+      if (hits.length === 0) return { result: `No past work found matching "${args.query}".` };
+      const formatted = hits.map(h => {
+        const when = new Date(h.date).toISOString().slice(0, 10);
+        const detail = h.detail ? ` — ${h.detail.slice(0, 200)}` : '';
+        return `[${when}] (${h.kind}) ${h.title}${detail}`;
+      }).join('\n');
+      return { result: formatted };
     }
 
     case 'get_task_history': {

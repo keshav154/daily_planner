@@ -122,6 +122,7 @@ export interface ILog extends Document {
   duration: number; // in minutes
   timestamp: Date;
   notes: string;
+  embedding?: number[];
 }
 
 const LogSchema = new Schema<ILog>({
@@ -130,7 +131,23 @@ const LogSchema = new Schema<ILog>({
   title: { type: String, required: true, trim: true },
   duration: { type: Number, required: true },
   timestamp: { type: Date, default: Date.now, index: true },
-  notes: { type: String, default: '' }
+  notes: { type: String, default: '' },
+  embedding: { type: [Number], default: undefined }
+});
+
+// Embed each work-log entry (title + notes) so the "recall what I did" search
+// can rank history by meaning, not just keywords. Mirrors the AgentMemory
+// hook; failures are swallowed so logging never blocks on the embedding call.
+LogSchema.pre('save', async function (next) {
+  if (this.isModified('title') || this.isModified('notes')) {
+    try {
+      const vector = await embedText(`${this.title}\n${this.notes || ''}`.trim(), 'passage');
+      if (vector) this.embedding = vector;
+    } catch (err) {
+      console.error('[Log] Failed to compute embedding on save:', err);
+    }
+  }
+  next();
 });
 
 // AgentMemory Schema

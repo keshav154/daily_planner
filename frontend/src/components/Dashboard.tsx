@@ -12,9 +12,10 @@ import { CoPilotDashboard } from './CoPilotDashboard';
 import { GoalTrackerView } from './GoalTrackerView';
 import { AgentActivityFeed } from './AgentActivityFeed';
 import { TelegramConnectWidget } from './TelegramConnectWidget';
-import { 
-  Sparkles, Calendar, BookOpen, BarChart3, LogOut, User, Menu, X, 
-  CalendarDays, Heart, Copy, Repeat, Sun, Moon, Brain, BarChart2, Users, Cpu, Target
+import { RecallSearch } from './RecallSearch';
+import {
+  Sparkles, Calendar, BookOpen, BarChart3, LogOut, User, Menu, X,
+  CalendarDays, Heart, Copy, Repeat, Sun, Moon, Brain, BarChart2, Users, Cpu, Target, Search
 } from 'lucide-react';
 import { AgentChatPanel } from './AgentChatPanel';
 import { WeeklyCalendarView } from './WeeklyCalendarView';
@@ -24,7 +25,7 @@ import { RecurringEventsManager } from './RecurringEventsManager';
 import { XPProgressBar } from './XPProgressBar';
 import { useTheme } from '../context/ThemeContext';
 
-type Tab = 'today' | 'logs' | 'analytics' | 'insights' | 'schedule' | 'habits' | 'templates' | 'recurring' | 'ai-tools' | 'weekly-review' | 'boardroom' | 'copilot-config' | 'goals' | 'agent-feed';
+type Tab = 'today' | 'recall' | 'logs' | 'analytics' | 'insights' | 'schedule' | 'habits' | 'templates' | 'recurring' | 'ai-tools' | 'weekly-review' | 'boardroom' | 'copilot-config' | 'goals' | 'agent-feed';
 
 export const Dashboard: React.FC = () => {
   const { user, logout } = useAuth();
@@ -35,6 +36,7 @@ export const Dashboard: React.FC = () => {
 
   const navItems = [
     { id: 'today' as Tab, label: 'Today Planner', icon: Calendar },
+    { id: 'recall' as Tab, label: 'Recall (Second Brain)', icon: Search },
     { id: 'schedule' as Tab, label: 'Weekly Schedule', icon: CalendarDays },
     { id: 'logs' as Tab, label: 'Work History', icon: BookOpen },
     { id: 'habits' as Tab, label: 'Daily Habits', icon: Heart },
@@ -54,6 +56,8 @@ export const Dashboard: React.FC = () => {
     switch (activeTab) {
       case 'today':
         return <TodayView />;
+      case 'recall':
+        return <RecallSearch />;
       case 'logs':
         return <LogsView />;
       case 'analytics':

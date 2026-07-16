@@ -28,9 +28,10 @@ const SRE_SYNONYMS: Record<string, string[]> = {
 /**
  * Token-overlap fallback score, used when semantic embeddings aren't
  * available (no NVIDIA key, embedding call failed, or memory predates
- * embedding support).
+ * embedding support). Exported so the recall/history search can reuse the
+ * same SRE-synonym-aware scoring; pass any object with a `.content` string.
  */
-function tokenOverlapScore(queryTokens: string[], memory: any): number {
+export function tokenOverlapScore(queryTokens: string[], memory: { content: string }): number {
   const contentTokens = memory.content.toLowerCase().split(/\W+/).filter((t: string) => t.length > 2);
   let matchCount = 0;
 
