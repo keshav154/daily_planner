@@ -96,20 +96,26 @@ export async function answerCallbackQuery(callbackQueryId: string, text?: string
  * often. No-ops (with a log) if the bot token or a public URL isn't
  * resolvable, e.g. local dev without a tunnel.
  */
-export async function registerTelegramWebhook(): Promise<void> {
+export interface WebhookRegistrationResult {
+  ok: boolean;
+  webhookUrl?: string;
+  reason?: string;
+}
+
+export async function registerTelegramWebhook(): Promise<WebhookRegistrationResult> {
   const token = getBotToken();
-  if (!token) return;
+  if (!token) return { ok: false, reason: 'TELEGRAM_BOT_TOKEN not configured' };
 
   const secret = process.env.TELEGRAM_WEBHOOK_SECRET;
   if (!secret) {
     console.warn('[Telegram] TELEGRAM_WEBHOOK_SECRET not set; skipping webhook registration (inbound replies will not work).');
-    return;
+    return { ok: false, reason: 'TELEGRAM_WEBHOOK_SECRET not set' };
   }
 
   const publicUrl = process.env.RENDER_EXTERNAL_URL || process.env.TELEGRAM_WEBHOOK_URL;
   if (!publicUrl) {
     console.warn('[Telegram] No public URL available (RENDER_EXTERNAL_URL/TELEGRAM_WEBHOOK_URL unset); skipping webhook registration.');
-    return;
+    return { ok: false, reason: 'No public URL (RENDER_EXTERNAL_URL/TELEGRAM_WEBHOOK_URL unset)' };
   }
 
   const webhookUrl = `${publicUrl.replace(/\/$/, '')}/api/notifications/telegram/webhook`;
@@ -118,16 +124,37 @@ export async function registerTelegramWebhook(): Promise<void> {
     const response = await fetch(`${TELEGRAM_API_BASE}/bot${token}/setWebhook`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ url: webhookUrl, secret_token: secret })
+      // allowed_updates must include callback_query, or button taps are never
+      // delivered even though text messages are.
+      body: JSON.stringify({ url: webhookUrl, secret_token: secret, allowed_updates: ['message', 'callback_query'] })
     });
     const data: any = await response.json();
     if (!response.ok || !data.ok) {
       console.error('[Telegram] setWebhook failed:', data);
-      return;
+      return { ok: false, reason: `Telegram rejected setWebhook: ${JSON.stringify(data)}` };
     }
     console.log(`[Telegram] Webhook registered: ${webhookUrl}`);
-  } catch (err) {
+    return { ok: true, webhookUrl };
+  } catch (err: any) {
     console.error('[Telegram] setWebhook request failed:', err);
+    return { ok: false, reason: err.message || 'setWebhook request failed' };
+  }
+}
+
+/**
+ * Reads Telegram's current view of the webhook — the registered URL, how many
+ * updates are queued, and (crucially) the last delivery error Telegram hit.
+ * This is what turns "it's not working" into a concrete diagnosis.
+ */
+export async function getTelegramWebhookInfo(): Promise<any> {
+  const token = getBotToken();
+  if (!token) return { error: 'TELEGRAM_BOT_TOKEN not configured' };
+  try {
+    const response = await fetch(`${TELEGRAM_API_BASE}/bot${token}/getWebhookInfo`);
+    const data: any = await response.json();
+    return data.result || data;
+  } catch (err: any) {
+    return { error: err.message || 'getWebhookInfo request failed' };
   }
 }
 

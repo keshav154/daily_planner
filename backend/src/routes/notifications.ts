@@ -1,7 +1,7 @@
 import { Router, Request, Response } from 'express';
 import { User } from '../models/Schemas';
 import { authenticateToken, AuthRequest } from '../middleware/auth';
-import { sendTelegramMessage, answerCallbackQuery, getLatestTelegramChatId, isTelegramConfigured } from '../services/telegramNotifier';
+import { sendTelegramMessage, answerCallbackQuery, getLatestTelegramChatId, isTelegramConfigured, registerTelegramWebhook, getTelegramWebhookInfo } from '../services/telegramNotifier';
 import { buildDailyBriefing } from '../services/briefingService';
 import { processAgentMessage } from '../services/agentChatService';
 import { handleTelegramCallback } from '../services/telegramInteractions';
@@ -86,6 +86,33 @@ router.post('/telegram/test', authenticateToken, async (req: AuthRequest, res: R
     res.json({ sent: true });
   } catch (error: any) {
     res.status(500).json({ error: error.message || 'Failed to send test message' });
+  }
+});
+
+// GET /api/notifications/telegram/webhook-info — diagnose why inbound isn't
+// working. Reports what Telegram thinks the webhook is (URL, queued updates,
+// last delivery error) plus whether the server has the secret configured.
+router.get('/telegram/webhook-info', authenticateToken, async (req: AuthRequest, res: Response) => {
+  try {
+    const info = await getTelegramWebhookInfo();
+    res.json({
+      secretConfigured: !!process.env.TELEGRAM_WEBHOOK_SECRET,
+      publicUrlConfigured: !!(process.env.RENDER_EXTERNAL_URL || process.env.TELEGRAM_WEBHOOK_URL),
+      telegram: info
+    });
+  } catch (error: any) {
+    res.status(500).json({ error: error.message || 'Failed to fetch webhook info' });
+  }
+});
+
+// POST /api/notifications/telegram/register-webhook — force (re)registration
+// without a full redeploy, e.g. right after setting TELEGRAM_WEBHOOK_SECRET.
+router.post('/telegram/register-webhook', authenticateToken, async (req: AuthRequest, res: Response) => {
+  try {
+    const result = await registerTelegramWebhook();
+    res.status(result.ok ? 200 : 400).json(result);
+  } catch (error: any) {
+    res.status(500).json({ error: error.message || 'Failed to register webhook' });
   }
 });
 
