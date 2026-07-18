@@ -7,6 +7,7 @@ import { handleTaskResolution } from '../services/resolutionHook';
 import { queryNvidiaNim } from '../config/nvidia';
 import { findSimilarMemory } from '../services/similarity';
 import { processAgentMessage } from '../services/agentChatService';
+import { searchHistory } from '../services/recall';
 import Anthropic from '@anthropic-ai/sdk';
 
 const router = Router();
@@ -225,6 +226,24 @@ router.post('/smart-capture', async (req: Request, res: Response) => {
   } catch (error: any) {
     console.error('Integration smart-capture failed:', error);
     res.status(500).json({ error: error.message || 'Failed to process capture' });
+  }
+});
+
+// 4c. GET /api/integration/recall?query=...&limit=8
+// API-key twin of GET /api/recall — lets the MCP server (office coding agent)
+// search the user's own work history: "what did I do about the EPS deploy?"
+router.get('/recall', async (req: Request, res: Response) => {
+  try {
+    const userId = (req as any).userId;
+    const query = typeof req.query.query === 'string' ? req.query.query : '';
+    const limit = Math.min(20, Math.max(1, parseInt(String(req.query.limit || '8'), 10) || 8));
+    if (!query.trim()) return res.json({ results: [] });
+
+    const results = await searchHistory(userId, query, limit);
+    res.json({ results });
+  } catch (error: any) {
+    console.error('Integration recall failed:', error);
+    res.status(500).json({ error: 'Failed to search history' });
   }
 });
 

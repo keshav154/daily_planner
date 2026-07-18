@@ -4,6 +4,7 @@ import { authenticateToken, AuthRequest } from '../middleware/auth';
 import { runPlanningLoop, runReflectionLoop, gatherUserContext } from '../agent/loop';
 import { queryNvidiaNim } from '../config/nvidia';
 import { processAgentMessage } from '../services/agentChatService';
+import { recordMemoryEngagement } from '../services/similarity';
 import Anthropic from '@anthropic-ai/sdk';
 
 const router = Router();
@@ -286,6 +287,20 @@ router.put('/memories/:id', authenticateToken, async (req: AuthRequest, res: Res
   } catch (error: any) {
     console.error('Update memory error:', error);
     res.status(500).json({ error: 'Failed to update memory feedback' });
+  }
+});
+
+// Record that the user engaged with a memory (opened/expanded it). This is a
+// strong, intentional self-curation signal — memories the user actually reads
+// rank higher and resist decay/pruning.
+router.post('/memories/:id/touch', authenticateToken, async (req: AuthRequest, res: Response) => {
+  try {
+    const memory = await AgentMemory.findOne({ _id: req.params.id, userId: req.userId }).select('_id');
+    if (!memory) return res.status(404).json({ error: 'Memory not found' });
+    await recordMemoryEngagement([memory._id]);
+    res.json({ ok: true });
+  } catch (error: any) {
+    res.status(500).json({ error: 'Failed to record engagement' });
   }
 });
 

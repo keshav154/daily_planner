@@ -135,7 +135,7 @@ export const consolidateMemories = async (userId: string) => {
     // Reduce importance of memories not accessed/updated in 14 days
     const fourteenDaysAgo = new Date(now.getTime() - 14 * 24 * 60 * 60 * 1000);
     const decayResult = await AgentMemory.updateMany(
-      { 
+      {
         userId,
         lastAccessedAt: { $lt: fourteenDaysAgo },
         importance: { $gt: 1 }
@@ -143,6 +143,29 @@ export const consolidateMemories = async (userId: string) => {
       { $inc: { importance: -1 } }
     );
     console.log(`[Memory Consolidation] Decayed importance on ${decayResult.modifiedCount} old memories.`);
+
+    // 1a. SELF-PRUNING: a memory that has decayed to the floor (importance 1),
+    // was never engaged with (accessCount 0), and hasn't been touched in 30+
+    // days has proven itself noise — archive it (feedback:'rejected' → hidden
+    // from the user-facing list but still auditable, never hard-deleted).
+    // Protected: user-authored facts (source:'user') and behavioral pattern
+    // categories are never auto-pruned — those are explicit or structural.
+    const thirtyDaysAgo = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
+    const pruneResult = await AgentMemory.updateMany(
+      {
+        userId,
+        source: { $ne: 'user' },
+        category: { $nin: ['Suggestion Feedback Pattern', 'Memory Feedback Pattern', 'Estimation Bias', 'Weekly Pattern', 'Habit Correlation'] },
+        importance: { $lte: 1 },
+        accessCount: { $lte: 0 },
+        lastAccessedAt: { $lt: thirtyDaysAgo },
+        feedback: { $ne: 'rejected' }
+      },
+      { $set: { feedback: 'rejected' } }
+    );
+    if (pruneResult.modifiedCount > 0) {
+      console.log(`[Memory Consolidation] Self-pruned ${pruneResult.modifiedCount} unused low-value memories.`);
+    }
 
     // 1b. FEEDBACK MINING - learn which suggestion/memory categories the user actually wants
     const minedSuggestionPatterns = await mineSuggestionFeedback(userId);

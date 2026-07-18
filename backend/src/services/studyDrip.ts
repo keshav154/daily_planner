@@ -1,15 +1,23 @@
 import { StudyDrip } from '../models/StudyDrip';
+import { StudyCard } from '../models/StudyCard';
 import { Goal, IGoal } from '../models/Goal';
 import { queryNvidiaNim } from '../config/nvidia';
 import { sendTelegramMessage } from './telegramNotifier';
+import { scheduleNext, dueDateFrom } from './srs';
 import Anthropic from '@anthropic-ai/sdk';
 
 /**
- * Daily cert/learning "study drip": one exam-style question per day about an
- * active learning goal, delivered to Telegram. The user's reply is graded and
- * feeds a streak. Built to convert stalled cert goals (which sit at low
- * progress for weeks) into a daily habit on the channel the user checks.
+ * Daily cert/learning "study drip", now a spaced-repetition system. Each day it
+ * serves one card for the user's most deadline-pressing learning goal —
+ * preferring a card that's due for review, otherwise growing the deck with a
+ * fresh question. The reply is graded and the card is rescheduled via SM-2
+ * (see services/srs.ts): wrong → back tomorrow, right → spaced further out. So
+ * study time concentrates on the topics the user keeps missing, and stalled
+ * cert goals become a compounding daily habit on the channel they check.
  */
+
+// Grow each goal's deck up to this many cards before switching to pure review.
+const TARGET_DECK = 20;
 
 const LEARNING_KEYWORDS = ['learn', 'study', 'prepare', 'cert', 'exam', 'k8s', 'kubernetes', 'terraform', 'aws', 'docker', 'prometheus', 'grafana', 'ansible', 'istio', 'kyverno', 'nvidia'];
 
@@ -70,9 +78,11 @@ async function currentStreak(userId: string): Promise<number> {
 }
 
 /**
- * Generates and sends one daily study question for the user's most
- * deadline-pressing active learning goal. No-ops (returns false) if there's
- * no learning goal, or an unanswered question is already open (don't stack).
+ * Serves one spaced-repetition card for the user's most deadline-pressing
+ * learning goal. Prefers a due review card; if none is due and the deck isn't
+ * full yet, generates a fresh card; if the deck is full and nothing's due,
+ * serves the soonest card to keep the daily rhythm. No-ops (returns false) if
+ * there's no learning goal or an unanswered question is already open.
  */
 export async function runStudyDripForUser(userId: string, chatId: string): Promise<boolean> {
   const openDrip = await StudyDrip.findOne({ userId, status: 'open' });
@@ -89,31 +99,54 @@ export async function runStudyDripForUser(userId: string, chatId: string): Promi
     return da - db;
   });
   const goal = learningGoals[0];
+  const now = new Date();
 
-  const recent = await StudyDrip.find({ userId, goalId: goal._id }).sort({ createdAt: -1 }).limit(5).lean();
-  const askedBefore = recent.map(r => r.question).join(' | ') || 'none yet';
+  // 1. A card that's due for review takes priority (reinforce before adding new).
+  let card = await StudyCard.findOne({ userId, goalId: goal._id, status: 'active', dueDate: { $lte: now } }).sort({ dueDate: 1 });
+  let isNew = false;
 
-  const prompt = `You are a certification study coach. Generate ONE focused exam-style question to help someone preparing for: "${goal.title}".
+  if (!card) {
+    const deckSize = await StudyCard.countDocuments({ userId, goalId: goal._id, status: 'active' });
+    if (deckSize < TARGET_DECK) {
+      // 2. Deck not full → generate a new card to broaden coverage.
+      const existing = await StudyCard.find({ userId, goalId: goal._id }).sort({ createdAt: -1 }).limit(8).lean();
+      const askedBefore = existing.map(c => c.question).join(' | ') || 'none yet';
+      const prompt = `You are a certification study coach. Generate ONE focused exam-style question to help someone preparing for: "${goal.title}".
 Avoid repeating these recently-asked questions: ${askedBefore}
 Return JSON: {"question": "<a single specific question>", "answer": "<the correct answer, 1-3 sentences>", "topic": "<short topic tag>"}`;
-
-  const result = await completeJson(prompt);
-  if (!result?.question || !result?.answer) return false;
+      const result = await completeJson(prompt);
+      if (!result?.question || !result?.answer) return false;
+      card = await StudyCard.create({
+        userId, goalId: goal._id, goalTitle: goal.title,
+        topic: result.topic || '', question: result.question, expectedAnswer: result.answer,
+        dueDate: now
+      });
+      isNew = true;
+    } else {
+      // 3. Deck full and nothing due → serve the soonest card to keep the habit.
+      card = await StudyCard.findOne({ userId, goalId: goal._id, status: 'active' }).sort({ dueDate: 1 });
+      if (!card) return false;
+    }
+  }
 
   const streak = await currentStreak(userId);
-  await new StudyDrip({
+  await StudyDrip.create({
     userId,
     goalId: goal._id,
+    cardId: card._id,
     goalTitle: goal.title,
-    topic: result.topic || '',
-    question: result.question,
-    expectedAnswer: result.answer,
+    topic: card.topic,
+    question: card.question,
+    expectedAnswer: card.expectedAnswer,
     status: 'open',
     streakAfter: streak
-  }).save();
+  });
 
+  const dueCount = await StudyCard.countDocuments({ userId, goalId: goal._id, status: 'active', dueDate: { $lte: now } });
+  const moreDue = Math.max(0, dueCount - 1);
   const streakLine = streak > 0 ? `\n\n🔥 streak: ${streak} day${streak === 1 ? '' : 's'}` : '';
-  const text = `📚 Daily study — ${goal.title}\n\nQ: ${result.question}\n\nReply with your answer.${streakLine}`;
+  const meta = `(${isNew ? 'new card' : 'review'}${moreDue > 0 ? ` · ${moreDue} more due` : ''})`;
+  const text = `📚 Daily study — ${goal.title}\n\nQ: ${card.question}\n\nReply with your answer.\n${meta}${streakLine}`;
   return sendTelegramMessage(chatId, text);
 }
 
@@ -149,6 +182,28 @@ Return JSON: {"correct": <true if substantially correct, else false>, "feedback"
   drip.gradedAt = new Date();
   await drip.save();
 
+  // Reschedule the spaced-repetition card via SM-2 — but only when we actually
+  // graded it (skip if the LLM was unavailable, so we don't punish/advance a
+  // card on a non-grade).
+  let nextReviewLine = '';
+  if (result && drip.cardId) {
+    const card = await StudyCard.findOne({ _id: drip.cardId, userId });
+    if (card) {
+      const next = scheduleNext(
+        { easeFactor: card.easeFactor, intervalDays: card.intervalDays, repetitions: card.repetitions, lapses: card.lapses },
+        correct
+      );
+      card.easeFactor = next.easeFactor;
+      card.intervalDays = next.intervalDays;
+      card.repetitions = next.repetitions;
+      card.lapses = next.lapses;
+      card.dueDate = dueDateFrom(next.intervalDays);
+      card.lastReviewedAt = new Date();
+      await card.save();
+      nextReviewLine = `\n\n🗓 back in ${next.intervalDays} day${next.intervalDays === 1 ? '' : 's'}`;
+    }
+  }
+
   // Nudge goal progress on a correct answer for goals with no milestone
   // structure (typical for cert goals) so daily study visibly moves the bar.
   if (correct) {
@@ -161,5 +216,5 @@ Return JSON: {"correct": <true if substantially correct, else false>, "feedback"
 
   const mark = result ? (correct ? '✅ Correct!' : '❌ Not quite.') : '📝 Recorded.';
   const streakLine = newStreak > 0 ? `\n\n🔥 streak: ${newStreak} day${newStreak === 1 ? '' : 's'}` : '';
-  return `${mark}\n\n${feedback}${streakLine}`;
+  return `${mark}\n\n${feedback}${streakLine}${nextReviewLine}`;
 }

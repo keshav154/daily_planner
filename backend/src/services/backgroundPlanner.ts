@@ -100,24 +100,16 @@ export const runAutonomousChecks = async () => {
         agentState.lastTelegramDigestDate !== userDateStr
       ) {
         try {
-          const { briefing } = await buildDailyBriefing(userId);
+          const { briefing, focusPlan } = await buildDailyBriefing(userId);
 
-          // Attach Done/Defer buttons for today's top few tasks so the user can
-          // clear them straight from the digest — high priority first, then
-          // soonest due. This is what makes the morning message actionable
-          // instead of just informational.
-          const candidateTasks = await Task.find({
-            userId,
-            status: { $in: ['todo', 'in-progress'] },
-            dueDate: { $lte: new Date(new Date().setHours(23, 59, 59, 999)) }
-          }).sort({ dueDate: 1 });
-          const priorityWeight: Record<string, number> = { high: 0, medium: 1, low: 2 };
-          const topTasks = candidateTasks
-            .sort((a, b) => (priorityWeight[a.priority] ?? 1) - (priorityWeight[b.priority] ?? 1))
-            .slice(0, 3);
+          // The Telegram briefing and the in-app card share exactly the same
+          // commitments: three existing tasks, never new agent-created work.
+          const taskIds = focusPlan.commitments.map(task => task.taskId);
+          const taskById = new Map((await Task.find({ userId, _id: { $in: taskIds } })).map(task => [task._id.toString(), task]));
+          const topTasks = taskIds.map(id => taskById.get(id)).filter((task): task is NonNullable<typeof task> => Boolean(task));
           const buttons = topTasks.length > 0 ? buildTaskActionButtons(topTasks) : undefined;
           const taskLines = topTasks.length > 0
-            ? '\n\nTop focus today:\n' + topTasks.map((t, i) => `${i + 1}. ${t.title}`).join('\n')
+            ? `\n\nToday's commitments (${focusPlan.plannedMinutes}/${focusPlan.focusBudgetMinutes} min) — protect ${focusPlan.focusWindow}:\n` + topTasks.map((t, i) => `${i + 1}. ${t.title}`).join('\n')
             : '';
 
           const sent = await sendTelegramMessage(

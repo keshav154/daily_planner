@@ -2,6 +2,7 @@ import { Task, User, AgentRun, AgentMemory } from '../models/Schemas';
 import RecurringEvent from '../models/RecurringEvent';
 import { queryNvidiaNim } from '../config/nvidia';
 import Anthropic from '@anthropic-ai/sdk';
+import { DailyFocusPlan, buildDailyFocusPlan } from './dailyFocusPlan';
 
 const getAnthropicClient = (): Anthropic | null => {
   const apiKey = process.env.ANTHROPIC_API_KEY;
@@ -20,6 +21,7 @@ export interface DailyBriefingDigest {
 export interface DailyBriefing {
   briefing: string;
   digest: DailyBriefingDigest;
+  focusPlan: DailyFocusPlan;
 }
 
 /**
@@ -68,6 +70,7 @@ export async function buildDailyBriefing(userId: string): Promise<DailyBriefing>
 
   const activeTasks = tasks.filter(t => t.status !== 'done' && t.status !== 'skipped');
   const highPriorityTasks = activeTasks.filter(t => t.priority === 'high');
+  const focusPlan = await buildDailyFocusPlan(userId, user, activeTasks, todayRecurring);
 
   // "While you were away" digest: news (what happened) is scoped to *today*,
   // not a rolling 24h window — a rolling window means opening the briefing
@@ -113,6 +116,7 @@ Summary statistics:
 - Total active tasks today: ${activeTasks.length}
 - High-priority tasks: ${highPriorityTasks.map(t => t.title).join(', ') || 'None'}
 - Total estimated duration: ${activeTasks.reduce((acc, t) => acc + t.estimatedTime, 0)} minutes
+- Today's protected commitments (already-existing tasks): ${focusPlan.commitments.map(t => t.title).join(', ') || 'None'}
 - Recurring meetings/standups scheduled today: ${todayRecurring.map(e => `${e.title} (${e.startTime}-${e.endTime})`).join(', ') || 'None'}
 - User Timezone: ${user.timezone || 'UTC'}
 - Work hours preferences: ${user.preferences?.workingHoursStart || '09:00'} to ${user.preferences?.workingHoursEnd || '17:00'}
@@ -167,6 +171,7 @@ Keep the tone encouraging, high-agency, professional, and productivity-focused. 
       agentActions,
       pendingSuggestionsCount,
       newInsightsCount
-    }
+    },
+    focusPlan
   };
 }

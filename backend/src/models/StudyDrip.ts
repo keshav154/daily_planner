@@ -10,6 +10,7 @@ import mongoose, { Schema, Document } from 'mongoose';
 export interface IStudyDrip extends Document {
   userId: mongoose.Types.ObjectId;
   goalId: mongoose.Types.ObjectId;
+  cardId?: mongoose.Types.ObjectId; // the spaced-repetition card this drip reviewed
   goalTitle: string;
   topic: string;
   question: string;
@@ -27,6 +28,7 @@ export interface IStudyDrip extends Document {
 const StudyDripSchema = new Schema<IStudyDrip>({
   userId: { type: Schema.Types.ObjectId, ref: 'User', required: true, index: true },
   goalId: { type: Schema.Types.ObjectId, ref: 'Goal', required: true },
+  cardId: { type: Schema.Types.ObjectId, ref: 'StudyCard' },
   goalTitle: { type: String, required: true },
   topic: { type: String, default: '' },
   question: { type: String, required: true },

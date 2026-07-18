@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import api from '../services/api';
-import { Sparkles, X, Zap } from 'lucide-react';
+import { Sparkles, X, Zap, Target, Clock3 } from 'lucide-react';
 
 interface BriefingDigest {
   agentActions: string[];
@@ -8,6 +8,15 @@ interface BriefingDigest {
   newInsightsCount: number;
 }
 
+interface FocusPlan {
+  commitments: Array<{ taskId: string; title: string; estimatedMinutes: number; reason: string }>;
+  plannedMinutes: number;
+  focusBudgetMinutes: number;
+  focusWindow: string;
+  calendarReservedMinutes: number;
+  calendarEventsCount: number;
+  attention: string;
+}
 // Strips trailing "(id: 507f1f...)" from action text — useful in the raw
 // activity log, but a MongoDB ObjectId doesn't belong in a friendly morning
 // greeting.
@@ -16,6 +25,7 @@ const stripTechnicalId = (text: string): string => text.replace(/\s*\(id:\s*[a-f
 export const DailyBriefingCard: React.FC = () => {
   const [briefing, setBriefing] = useState('');
   const [digest, setDigest] = useState<BriefingDigest | null>(null);
+  const [focusPlan, setFocusPlan] = useState<FocusPlan | null>(null);
   const [loading, setLoading] = useState(true);
   const [dismissed, setDismissed] = useState(false);
 
@@ -34,6 +44,7 @@ export const DailyBriefingCard: React.FC = () => {
         const res = await api.get('/briefing/daily');
         setBriefing(res.data.briefing || '');
         setDigest(res.data.digest || null);
+        setFocusPlan(res.data.focusPlan || null);
       } catch (err) {
         console.error('Failed to fetch daily briefing:', err);
       } finally {
@@ -74,6 +85,30 @@ export const DailyBriefingCard: React.FC = () => {
           ) : (
             <>
               <p className="text-[11px] text-black dark:text-neutral-300 leading-relaxed font-sans font-bold">{briefing}</p>
+
+              {focusPlan && (
+                <section className="mt-3 border-2 border-black dark:border-white bg-amber-50 dark:bg-amber-950/20 p-3 space-y-2">
+                  <div className="flex items-center justify-between gap-2">
+                    <p className="flex items-center gap-1.5 text-[10px] font-black uppercase tracking-wider text-black dark:text-amber-200"><Target className="w-3.5 h-3.5 text-amber-600 dark:text-amber-400" /> Today&apos;s commitments</p>
+                    <span className="flex items-center gap-1 text-[9px] font-black text-amber-700 dark:text-amber-300"><Clock3 className="w-3 h-3" /> {focusPlan.plannedMinutes}/{focusPlan.focusBudgetMinutes} min</span>
+                  </div>
+                  {focusPlan.commitments.length > 0 ? (
+                    <ol className="space-y-1.5">
+                      {focusPlan.commitments.map((task, index) => (
+                        <li key={task.taskId} className="flex items-start gap-2 text-[10px] font-bold text-black dark:text-neutral-200">
+                          <span className="shrink-0 w-4 h-4 flex items-center justify-center bg-amber-300 dark:bg-amber-500 text-black text-[9px]">{index + 1}</span>
+                          <span>{task.title} <span className="text-neutral-600 dark:text-neutral-400 font-semibold">— {task.reason}</span></span>
+                        </li>
+                      ))}
+                    </ol>
+                  ) : <p className="text-[10px] font-bold text-neutral-700 dark:text-neutral-300">No commitments yet.</p>}
+                  <p className="text-[9px] font-semibold text-neutral-600 dark:text-neutral-400">
+                    Protect {focusPlan.focusWindow}.
+                    {focusPlan.calendarEventsCount > 0 && ` ${focusPlan.calendarReservedMinutes} min reserved for ${focusPlan.calendarEventsCount} calendar commitment${focusPlan.calendarEventsCount === 1 ? '' : 's'}.`}
+                    {' '}{focusPlan.attention}
+                  </p>
+                </section>
+              )}
 
               {digest && (digest.agentActions.length > 0 || digest.pendingSuggestionsCount > 0 || digest.newInsightsCount > 0) && (
                 <div className="pt-2 space-y-1.5">

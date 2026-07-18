@@ -1,6 +1,6 @@
 import { Task, Log, AgentMemory } from '../models/Schemas';
 import { embedText, cosineSimilarity } from './embeddings';
-import { tokenOverlapScore } from './similarity';
+import { tokenOverlapScore, recordMemoryEngagement } from './similarity';
 
 /**
  * "Recall what I did" — natural-language search over the user's own history.
@@ -21,6 +21,7 @@ export interface RecallResult {
   date: Date;
   score: number;
   linkedTaskId?: string;
+  memoryId?: string; // present for memory-kind results; drives self-curation
 }
 
 export async function searchHistory(userId: string, query: string, limit = 8): Promise<RecallResult[]> {
@@ -84,14 +85,18 @@ export async function searchHistory(userId: string, query: string, limit = 8): P
   }
 
   for (const m of memories) {
-    const score = scoreOne(m.content, m.embedding as number[] | undefined);
-    if (score > 0.01) {
+    const base = scoreOne(m.content, m.embedding as number[] | undefined);
+    if (base > 0.01) {
+      // Self-curation: memories the user keeps engaging with rank higher in
+      // recall too (capped so a hot memory can't crowd out fresh matches).
+      const engagementBoost = 1.0 + Math.min(0.5, Math.log1p((m as any).accessCount || 0) * 0.15);
       results.push({
         kind: 'memory',
         title: m.category || 'insight',
         detail: m.content,
         date: m.createdAt,
-        score
+        score: base * engagementBoost,
+        memoryId: m._id.toString()
       });
     }
   }
@@ -109,5 +114,12 @@ export async function searchHistory(userId: string, query: string, limit = 8): P
     seen.add(key);
     deduped.push(r);
   }
-  return deduped.slice(0, limit);
+  const top = deduped.slice(0, limit);
+
+  // A memory that surfaced for a real user query is a usefulness signal —
+  // record engagement so it self-curates upward over time. Fire-and-forget.
+  const memoryIds = top.filter(r => r.memoryId).map(r => r.memoryId);
+  if (memoryIds.length > 0) void recordMemoryEngagement(memoryIds);
+
+  return top;
 }

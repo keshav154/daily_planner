@@ -9,6 +9,7 @@ interface RecallResult {
   date: string;
   score: number;
   linkedTaskId?: string;
+  memoryId?: string;
 }
 
 const KIND_META: Record<RecallResult['kind'], { label: string; icon: React.ElementType; color: string }> = {
@@ -78,8 +79,17 @@ export const RecallSearch: React.FC = () => {
         {results.map((r, idx) => {
           const meta = KIND_META[r.kind];
           const Icon = meta.icon;
+          // Clicking a memory result is an explicit "this was useful" signal —
+          // it tells the second brain to rank this higher next time (self-curation).
+          const onCardClick = r.memoryId
+            ? () => { api.post(`/agent/memories/${r.memoryId}/touch`).catch(() => {}); }
+            : undefined;
           return (
-            <div key={idx} className="glass-panel p-4 border-l-4 border-l-indigo-500">
+            <div
+              key={idx}
+              onClick={onCardClick}
+              className={`glass-panel p-4 border-l-4 border-l-indigo-500 ${onCardClick ? 'cursor-pointer hover:border-l-indigo-400' : ''}`}
+            >
               <div className="flex items-center justify-between mb-1.5">
                 <div className={`flex items-center gap-1.5 text-[10px] font-black uppercase tracking-wider border px-1.5 py-0.5 ${meta.color}`}>
                   <Icon className="w-3 h-3" /> {meta.label}

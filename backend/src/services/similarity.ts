@@ -130,7 +130,13 @@ export const getRelevantMemories = async (
       const daysSinceAccess = Math.max(0, (now.getTime() - lastAccess.getTime()) / (1000 * 60 * 60 * 24));
       const recencyBoost = 1.0 + (0.3 / (daysSinceAccess + 1));
 
-      const finalScore = baseScore * importanceFactor * recencyBoost;
+      // Engagement boost: memories the user/agent actually keeps using rank
+      // higher, so the second brain self-curates toward what's useful instead
+      // of treating a never-touched note the same as a frequently-recalled one.
+      // Saturates so a single hot memory can't dominate (log-ish, capped at ~+50%).
+      const engagementBoost = 1.0 + Math.min(0.5, Math.log1p(memory.accessCount || 0) * 0.15);
+
+      const finalScore = baseScore * importanceFactor * recencyBoost * engagementBoost;
 
       return { memory, score: finalScore };
     });
@@ -265,16 +271,22 @@ export const getUserRules = async (userId: string, limit: number = 10): Promise<
 
 // Helper function to update access details
 async function updateAccessStats(memories: any[]) {
+  await recordMemoryEngagement(memories.map(m => m._id));
+}
+
+/**
+ * Records engagement (an access) against memory ids: bumps accessCount and
+ * refreshes lastAccessedAt. This is the signal that drives self-curation —
+ * the more a memory is actually retrieved by the agent or surfaced/opened by
+ * the user in Recall, the higher it ranks and the longer it survives decay.
+ * Failures are swallowed so engagement tracking never breaks a read path.
+ */
+export async function recordMemoryEngagement(ids: any[]): Promise<void> {
   try {
-    if (memories.length === 0) return;
-    const now = new Date();
-    const ids = memories.map(m => m._id);
+    if (!ids || ids.length === 0) return;
     await AgentMemory.updateMany(
       { _id: { $in: ids } },
-      {
-        $inc: { accessCount: 1 },
-        $set: { lastAccessedAt: now }
-      }
+      { $inc: { accessCount: 1 }, $set: { lastAccessedAt: new Date() } }
     );
   } catch (err) {
     console.error('Failed to update memory access stats:', err);

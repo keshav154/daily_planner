@@ -1,0 +1,23 @@
+{
+  "name": "kortex-mcp-server",
+  "version": "1.0.0",
+  "description": "MCP server exposing Kortex (add & track tasks, recall work history) to coding agents.",
+  "type": "module",
+  "bin": {
+    "kortex-mcp": "dist/index.js"
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsc",
+    "start": "node dist/index.js"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.11.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "typescript": "^5.5.0"
+  }
+}
